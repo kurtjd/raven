@@ -542,3 +542,42 @@ impl Cpu {
         todo!();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_zero_ext() {
+        assert_eq!(0x0000_0000_0000_0000u64, zero_ext!(0x00u8));
+        assert_eq!(0x0000_0000_0000_00FFu64, zero_ext!(0xFFu8));
+        assert_eq!(0x0000_0000_0000_00F0u64, zero_ext!(0xF0u8));
+        assert_eq!(0x0000_0000_0000_0080u64, zero_ext!(0x80u8));
+        assert_eq!(0x0000_0000_0000_0070u64, zero_ext!(0x70u8));
+    }
+
+    #[test]
+    fn test_sign_ext_b() {
+        assert_eq!(0x0000_0000_0000_0000u64, sign_ext_b!(0x00u8));
+        assert_eq!(0xFFFF_FFFF_FFFF_FFFFu64, sign_ext_b!(0xFFu8));
+        assert_eq!(0xFFFF_FFFF_FFFF_FFF0u64, sign_ext_b!(0xF0u8));
+        assert_eq!(0xFFFF_FFFF_FFFF_FF80u64, sign_ext_b!(0x80u8));
+        assert_eq!(0x0000_0000_0000_0070u64, sign_ext_b!(0x70u8));
+    }
+
+    #[test]
+    fn test_sign_ext_h() {
+        assert_eq!(0x0000_0000_0000_0000u64, sign_ext_h!(0x0000u16));
+        assert_eq!(0xFFFF_FFFF_FFFF_FFFFu64, sign_ext_h!(0xFFFFu16));
+        assert_eq!(0xFFFF_FFFF_FFFF_F000u64, sign_ext_h!(0xF000u16));
+        assert_eq!(0xFFFF_FFFF_FFFF_8000u64, sign_ext_h!(0x8000u16));
+        assert_eq!(0x0000_0000_0000_7000u64, sign_ext_h!(0x7000u16));
+    }
+
+    #[test]
+    fn test_sign_ext_w() {
+        assert_eq!(0x0000_0000_0000_0000u64, sign_ext_w!(0x0000_0000u32));
+        assert_eq!(0xFFFF_FFFF_FFFF_0000u64, sign_ext_w!(0xFFFF_0000u32));
+        assert_eq!(0xFFFF_FFFF_F000_0000u64, sign_ext_w!(0xF000_0000u32));
+        assert_eq!(0xFFFF_FFFF_8000_0000u64, sign_ext_w!(0x8000_0000u32));
+        assert_eq!(0x0000_0000_7000_0000u64, sign_ext_w!(0x7000_0000u32));
+    }
+}
