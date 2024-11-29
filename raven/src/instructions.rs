@@ -269,3 +269,113 @@ impl Cpu {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_expand_imm_i() {
+        let cpu32 = Cpu::new("RV32I", 0).unwrap();
+        let cpu64 = Cpu::new("RV64I", 0).unwrap();
+
+        assert_eq!(0x0000_0000_0000_0000u64, cpu32.expand_imm_i(0x000u16));
+        assert_eq!(0x0000_0000_0000_0000u64, cpu64.expand_imm_i(0x000u16));
+
+        assert_eq!(0x0000_0000_FFFF_FFFFu64, cpu32.expand_imm_i(0xFFFu16));
+        assert_eq!(0xFFFF_FFFF_FFFF_FFFFu64, cpu64.expand_imm_i(0xFFFu16));
+
+        assert_eq!(0x0000_0000_FFFF_FF00u64, cpu32.expand_imm_i(0xF00u16));
+        assert_eq!(0xFFFF_FFFF_FFFF_FF00u64, cpu64.expand_imm_i(0xF00u16));
+
+        assert_eq!(0x0000_0000_FFFF_F800u64, cpu32.expand_imm_i(0x800u16));
+        assert_eq!(0xFFFF_FFFF_FFFF_F800u64, cpu64.expand_imm_i(0x800u16));
+
+        assert_eq!(0x0000_0000_0000_0700u64, cpu32.expand_imm_i(0x700u16));
+        assert_eq!(0x0000_0000_0000_0700u64, cpu64.expand_imm_i(0x700u16));
+    }
+
+    #[test]
+    fn test_expand_imm_s() {
+        let cpu32 = Cpu::new("RV32I", 0).unwrap();
+        let cpu64 = Cpu::new("RV64I", 0).unwrap();
+
+        assert_eq!(0x0000_0000_0000_0000u64, cpu32.expand_imm_s(0x000u16));
+        assert_eq!(0x0000_0000_0000_0000u64, cpu64.expand_imm_s(0x000u16));
+
+        assert_eq!(0x0000_0000_FFFF_FFFFu64, cpu32.expand_imm_s(0xFFFu16));
+        assert_eq!(0xFFFF_FFFF_FFFF_FFFFu64, cpu64.expand_imm_s(0xFFFu16));
+
+        assert_eq!(0x0000_0000_FFFF_FF00u64, cpu32.expand_imm_s(0xF00u16));
+        assert_eq!(0xFFFF_FFFF_FFFF_FF00u64, cpu64.expand_imm_s(0xF00u16));
+
+        assert_eq!(0x0000_0000_FFFF_F800u64, cpu32.expand_imm_s(0x800u16));
+        assert_eq!(0xFFFF_FFFF_FFFF_F800u64, cpu64.expand_imm_s(0x800u16));
+
+        assert_eq!(0x0000_0000_0000_0700u64, cpu32.expand_imm_s(0x700u16));
+        assert_eq!(0x0000_0000_0000_0700u64, cpu64.expand_imm_s(0x700u16));
+    }
+
+    #[test]
+    fn test_expand_imm_b() {
+        let cpu32 = Cpu::new("RV32I", 0).unwrap();
+        let cpu64 = Cpu::new("RV64I", 0).unwrap();
+
+        assert_eq!(0x0000_0000_0000_0000u64, cpu32.expand_imm_b(0x000u16));
+        assert_eq!(0x0000_0000_0000_0000u64, cpu64.expand_imm_b(0x000u16));
+
+        assert_eq!(0x0000_0000_FFFF_FFFEu64, cpu32.expand_imm_b(0xFFFu16));
+        assert_eq!(0xFFFF_FFFF_FFFF_FFFEu64, cpu64.expand_imm_b(0xFFFu16));
+
+        assert_eq!(0x0000_0000_FFFF_FE02u64, cpu32.expand_imm_b(0xF01u16));
+        assert_eq!(0xFFFF_FFFF_FFFF_FE02u64, cpu64.expand_imm_b(0xF01u16));
+
+        assert_eq!(0x0000_0000_FFFF_F002u64, cpu32.expand_imm_b(0x801u16));
+        assert_eq!(0xFFFF_FFFF_FFFF_F002u64, cpu64.expand_imm_b(0x801u16));
+
+        assert_eq!(0x0000_0000_0000_0E00u64, cpu32.expand_imm_b(0x700u16));
+        assert_eq!(0x0000_0000_0000_0E00u64, cpu64.expand_imm_b(0x700u16));
+    }
+
+    #[test]
+    fn test_expand_imm_u() {
+        let cpu32 = Cpu::new("RV32I", 0).unwrap();
+        let cpu64 = Cpu::new("RV64I", 0).unwrap();
+
+        assert_eq!(0x0000_0000_0000_0000u64, cpu32.expand_imm_u(0x00000u32));
+        assert_eq!(0x0000_0000_0000_0000u64, cpu64.expand_imm_u(0x00000u32));
+
+        assert_eq!(0x0000_0000_FFFF_F000u64, cpu32.expand_imm_u(0xFFFFFu32));
+        assert_eq!(0xFFFF_FFFF_FFFF_F000u64, cpu64.expand_imm_u(0xFFFFFu32));
+
+        assert_eq!(0x0000_0000_F000_0000u64, cpu32.expand_imm_u(0xF0000u32));
+        assert_eq!(0xFFFF_FFFF_F000_0000u64, cpu64.expand_imm_u(0xF0000u32));
+
+        assert_eq!(0x0000_0000_8000_0000u64, cpu32.expand_imm_u(0x80000u32));
+        assert_eq!(0xFFFF_FFFF_8000_0000u64, cpu64.expand_imm_u(0x80000u32));
+
+        assert_eq!(0x0000_0000_7000_0000u64, cpu32.expand_imm_u(0x70000u32));
+        assert_eq!(0x0000_0000_7000_0000u64, cpu64.expand_imm_u(0x70000u32));
+    }
+
+    #[test]
+    fn test_expand_imm_j() {
+        let cpu32 = Cpu::new("RV32I", 0).unwrap();
+        let cpu64 = Cpu::new("RV64I", 0).unwrap();
+
+        assert_eq!(0x0000_0000_0000_0000u64, cpu32.expand_imm_j(0x00000u32));
+        assert_eq!(0x0000_0000_0000_0000u64, cpu64.expand_imm_j(0x00000u32));
+
+        assert_eq!(0x0000_0000_FFFF_FFFEu64, cpu32.expand_imm_j(0xFFFFFu32));
+        assert_eq!(0xFFFF_FFFF_FFFF_FFFEu64, cpu64.expand_imm_j(0xFFFFFu32));
+
+        assert_eq!(0x0000_0000_FFFE_0002u64, cpu32.expand_imm_j(0xF0001u32));
+        assert_eq!(0xFFFF_FFFF_FFFE_0002u64, cpu64.expand_imm_j(0xF0001u32));
+
+        assert_eq!(0x0000_0000_FFF0_0002u64, cpu32.expand_imm_j(0x80001u32));
+        assert_eq!(0xFFFF_FFFF_FFF0_0002u64, cpu64.expand_imm_j(0x80001u32));
+
+        assert_eq!(0x0000_0000_000E_0000u64, cpu32.expand_imm_j(0x70000u32));
+        assert_eq!(0x0000_0000_000E_0000u64, cpu64.expand_imm_j(0x70000u32));
+    }
+}
