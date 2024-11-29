@@ -52,7 +52,7 @@ pub struct Cpu {
 
 impl Cpu {
     fn parse_isa(&mut self, isa: &str) -> Result<(), IsaError> {
-        // At least need 5 chaarcters to identify base ISA
+        // At least need 5 charcters to identify base ISA
         if isa.len() < 5 {
             return Err(IsaError::Invalid);
         }
@@ -77,41 +77,45 @@ impl Cpu {
         let mut multi = String::new();
 
         for c in isa.chars().skip(5) {
-            match c {
-                'M' => self.extensions = self.extensions.with_m(true),
-                'A' => self.extensions = self.extensions.with_a(true),
-                'F' => self.extensions = self.extensions.with_f(true).with_zicsr(true),
-                'D' => self.extensions = self.extensions.with_d(true).with_f(true).with_zicsr(true),
-                'C' => self.extensions = self.extensions.with_c(true),
-                'S' => self.extensions = self.extensions.with_s(true),
-                'Z' => in_multi = true,
-                'G' => {
-                    self.extensions = self
-                        .extensions
-                        .with_m(true)
-                        .with_a(true)
-                        .with_f(true)
-                        .with_d(true)
-                        .with_zicsr(true)
-                        .with_zifencei(true)
+            if in_multi {
+                match c {
+                    '_' | '.' if multi == "ICSR" => {
+                        self.extensions = self.extensions.with_zicsr(true);
+                        multi.clear();
+                        in_multi = false;
+                    }
+                    '_' | '.' if multi == "IFENCEI" => {
+                        self.extensions = self.extensions.with_zifencei(true);
+                        multi.clear();
+                        in_multi = false;
+                    }
+                    '_' | '.' => return Err(IsaError::ExtNotSupported),
+                    _ => multi.push(c),
                 }
-
-                '_' | '.' if in_multi && multi == "ICSR" => {
-                    self.extensions = self.extensions.with_zicsr(true);
-                    multi.clear();
-                    in_multi = false;
+            } else {
+                match c {
+                    'M' => self.extensions = self.extensions.with_m(true),
+                    'A' => self.extensions = self.extensions.with_a(true),
+                    'F' => self.extensions = self.extensions.with_f(true).with_zicsr(true),
+                    'D' => {
+                        self.extensions = self.extensions.with_d(true).with_f(true).with_zicsr(true)
+                    }
+                    'C' => self.extensions = self.extensions.with_c(true),
+                    'S' => self.extensions = self.extensions.with_s(true),
+                    'Z' => in_multi = true,
+                    'G' => {
+                        self.extensions = self
+                            .extensions
+                            .with_m(true)
+                            .with_a(true)
+                            .with_f(true)
+                            .with_d(true)
+                            .with_zicsr(true)
+                            .with_zifencei(true)
+                    }
+                    '_' | '.' => (), // Pass
+                    _ => return Err(IsaError::ExtNotSupported),
                 }
-                '_' | '.' if in_multi && multi == "IFENCEI" => {
-                    self.extensions = self.extensions.with_zifencei(true);
-                    multi.clear();
-                    in_multi = false;
-                }
-
-                '_' | '.' if in_multi => return Err(IsaError::ExtNotSupported),
-                '_' | '.' => (), // Pass
-
-                _ if in_multi => multi.push(c),
-                _ => return Err(IsaError::ExtNotSupported),
             }
         }
 
@@ -152,5 +156,81 @@ impl Cpu {
         }
 
         self.update_pc();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_isa_success() {
+        let cpu = Cpu::new("RV32I", 0).unwrap();
+        assert!(matches!(cpu.base_isa, BaseIsa::RV32I));
+
+        let cpu = Cpu::new("RV32E", 0).unwrap();
+        assert!(matches!(cpu.base_isa, BaseIsa::RV32I));
+
+        let cpu = Cpu::new("RV64I", 0).unwrap();
+        assert!(matches!(cpu.base_isa, BaseIsa::RV64I));
+
+        let cpu = Cpu::new("RV64E", 0).unwrap();
+        assert!(matches!(cpu.base_isa, BaseIsa::RV64I));
+
+        let cpu = Cpu::new("RV32IM", 0).unwrap();
+        assert!(matches!(cpu.base_isa, BaseIsa::RV32I));
+        assert!(cpu.extensions.m());
+
+        let cpu = Cpu::new("RV64IA", 0).unwrap();
+        assert!(matches!(cpu.base_isa, BaseIsa::RV64I));
+        assert!(cpu.extensions.a());
+
+        let cpu = Cpu::new("RV32IF", 0).unwrap();
+        assert!(matches!(cpu.base_isa, BaseIsa::RV32I));
+        assert!(cpu.extensions.f() && cpu.extensions.zicsr());
+
+        let cpu = Cpu::new("RV64I_D", 0).unwrap();
+        assert!(matches!(cpu.base_isa, BaseIsa::RV64I));
+        assert!(cpu.extensions.d() && cpu.extensions.f() && cpu.extensions.zicsr());
+
+        let cpu = Cpu::new("RV64IZicsr", 0).unwrap();
+        assert!(matches!(cpu.base_isa, BaseIsa::RV64I));
+        assert!(cpu.extensions.zicsr());
+
+        let cpu = Cpu::new("RV32IZifencei", 0).unwrap();
+        assert!(matches!(cpu.base_isa, BaseIsa::RV32I));
+        assert!(cpu.extensions.zifencei());
+
+        let cpu = Cpu::new("RV64IMZicsr_Zifencei", 0).unwrap();
+        assert!(matches!(cpu.base_isa, BaseIsa::RV64I));
+        assert!(cpu.extensions.zicsr() && cpu.extensions.zifencei() && cpu.extensions.m());
+
+        let cpu = Cpu::new("RV32IG", 0).unwrap();
+        assert!(matches!(cpu.base_isa, BaseIsa::RV32I));
+        assert!(
+            cpu.extensions.m()
+                && cpu.extensions.a()
+                && cpu.extensions.f()
+                && cpu.extensions.d()
+                && cpu.extensions.zicsr()
+                && cpu.extensions.zifencei()
+        );
+    }
+
+    #[test]
+    fn test_parse_isa_err() {
+        assert!(matches!(Cpu::new("ARM", 0), Err(IsaError::Invalid)));
+        assert!(matches!(
+            Cpu::new("RV128I", 0),
+            Err(IsaError::BaseNotSupported)
+        ));
+        assert!(matches!(
+            Cpu::new("RV32IV", 0),
+            Err(IsaError::ExtNotSupported)
+        ));
+        assert!(matches!(
+            Cpu::new("RV32IZxxn", 0),
+            Err(IsaError::ExtNotSupported)
+        ));
     }
 }
