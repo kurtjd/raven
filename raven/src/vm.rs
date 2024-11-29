@@ -6,7 +6,8 @@ use std::fs::File;
 use std::io::{self, Read};
 
 const RESET_ADDR: u64 = 0x8000_0000;
-const UART_TX_ADDR: u64 = 0x1000_0000;
+const PUTC_ADDR: u64 = 0x1000_0000;
+const PUTI_ADDR: u64 = 0x1000_0001;
 const RAM_START: u64 = 0x8000_0000;
 const RAM_END: u64 = u64::MAX;
 
@@ -104,8 +105,12 @@ impl MemoryAccess for MemoryController {
                     Err(MemoryError::OutOfRange)
                 }
             }
-            UART_TX_ADDR => {
+            PUTC_ADDR => {
                 print!("{}", char::from(val));
+                Ok(())
+            }
+            PUTI_ADDR => {
+                println!("{val}");
                 Ok(())
             }
             _ => Err(MemoryError::Invalid),
@@ -118,7 +123,7 @@ impl MemoryAccess for MemoryController {
                 let idx = to_ram_idx!(addr);
                 if idx < self.memsz - 1 {
                     let bytes = val.to_le_bytes();
-                    self.ram[addr as usize..addr as usize + 2].copy_from_slice(&bytes);
+                    self.ram[idx..idx + 2].copy_from_slice(&bytes);
                     Ok(())
                 } else {
                     Err(MemoryError::OutOfRange)
@@ -134,7 +139,7 @@ impl MemoryAccess for MemoryController {
                 let idx = to_ram_idx!(addr);
                 if idx < self.memsz - 3 {
                     let bytes = val.to_le_bytes();
-                    self.ram[addr as usize..addr as usize + 4].copy_from_slice(&bytes);
+                    self.ram[idx..idx + 4].copy_from_slice(&bytes);
                     Ok(())
                 } else {
                     Err(MemoryError::OutOfRange)
@@ -150,7 +155,7 @@ impl MemoryAccess for MemoryController {
                 let idx = to_ram_idx!(addr);
                 if idx < self.memsz - 7 {
                     let bytes = val.to_le_bytes();
-                    self.ram[addr as usize..addr as usize + 8].copy_from_slice(&bytes);
+                    self.ram[idx..idx + 8].copy_from_slice(&bytes);
                     Ok(())
                 } else {
                     Err(MemoryError::OutOfRange)

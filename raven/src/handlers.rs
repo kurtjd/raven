@@ -93,7 +93,12 @@ impl Cpu {
         let rd = instr.rd().value();
         let rs = instr.rs1().value();
         let imm = self.expand_imm_i(instr.imm().value());
-        let addr = self.read_gpr(rs).wrapping_add(imm);
+
+        // Need to account for the fact that RV32I is limited to 32-bit addr space
+        let mut addr = self.read_gpr(rs).wrapping_add(imm);
+        if let BaseIsa::RV32I = self.base_isa {
+            addr &= 0xFFFF_FFFF;
+        }
 
         match funct3 {
             funct3::LB => {
@@ -267,7 +272,12 @@ impl Cpu {
         let rs2 = instr.rs2().value();
         let rs2_val = self.read_gpr(rs2);
         let imm = self.expand_imm_s(instr.imm().value());
-        let addr = self.read_gpr(rs1).wrapping_add(imm);
+
+        // Need to account for the fact that RV32I is limited to 32-bit addr space
+        let mut addr = self.read_gpr(rs1).wrapping_add(imm);
+        if let BaseIsa::RV32I = self.base_isa {
+            addr &= 0xFFFF_FFFF;
+        }
 
         match funct3 {
             funct3::SB => match memory.storeb(addr, rs2_val as u8) {
