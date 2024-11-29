@@ -1,6 +1,6 @@
 pub mod cpu;
-mod instr_formats;
+mod handlers;
+mod instructions;
 pub mod memory;
-mod opcodes;
 mod registers;
 pub mod vm;

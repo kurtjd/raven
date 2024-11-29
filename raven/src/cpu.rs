@@ -1,5 +1,5 @@
-use crate::instr_formats::*;
-use crate::memory::*;
+use crate::instructions::{ILenGroup, Instruction};
+use crate::memory::MemoryAccess;
 use crate::registers::*;
 use bitbybit::bitfield;
 
@@ -51,55 +51,6 @@ pub struct Cpu {
 }
 
 impl Cpu {
-    fn handle_instr(&mut self, instr: Instruction, memory: &mut impl MemoryAccess) {
-        self.write_pc_next_add(4);
-
-        match instr.opcode().major() {
-            MajorGroup::Load => self.handle_load(instr, memory),
-            MajorGroup::LoadFP => self.handle_load_fp(instr, memory),
-            MajorGroup::Custom0 => self.handle_custom_0(instr),
-            MajorGroup::MiscMem => self.handle_misc_mem(instr, memory),
-            MajorGroup::OpImm => self.handle_op_imm(instr),
-            MajorGroup::AuiPC => self.handle_auipc(instr),
-            MajorGroup::OpImm32 => self.handle_op_imm_32(instr),
-            MajorGroup::B48 => self.handle_b48(instr),
-            MajorGroup::Store => self.handle_store(instr, memory),
-            MajorGroup::StoreFP => self.handle_store_fp(instr, memory),
-            MajorGroup::Custom1 => self.handle_custom_1(instr),
-            MajorGroup::AMO => self.handle_amo(instr, memory),
-            MajorGroup::Op => self.handle_op(instr),
-            MajorGroup::Lui => self.handle_lui(instr),
-            MajorGroup::Op32 => self.handle_op_32(instr),
-            MajorGroup::B64 => self.handle_b64(instr),
-            MajorGroup::MAdd => self.handle_madd(instr),
-            MajorGroup::MSub => self.handle_msub(instr),
-            MajorGroup::NMSub => self.handle_nmsub(instr),
-            MajorGroup::NMAdd => self.handle_nmadd(instr),
-            MajorGroup::OpFP => self.handle_op_fp(instr),
-            MajorGroup::OpV => self.handle_op_v(instr),
-            MajorGroup::Custom2 => self.handle_custom_2(instr),
-            MajorGroup::B48_2 => self.handle_b48_2(instr),
-            MajorGroup::Branch => self.handle_branch(instr),
-            MajorGroup::Jalr => self.handle_jalr(instr),
-            MajorGroup::Reserved => self.handle_reserved(instr),
-            MajorGroup::Jal => self.handle_jal(instr),
-            MajorGroup::System => self.handle_system(instr),
-            MajorGroup::OpVE => self.handle_op_ve(instr),
-            MajorGroup::Custom3 => self.handle_custom_3(instr),
-            MajorGroup::B80 => self.handle_b80(instr),
-        }
-    }
-
-    fn handle_instr_c(&mut self, _instr: u16, _memory: &mut impl MemoryAccess) {
-        if self.extensions.c() {
-            self.write_pc_next_add(2);
-            todo!();
-        } else {
-            // Raise exception
-            todo!();
-        }
-    }
-
     fn parse_isa(&mut self, isa: &str) -> Result<(), IsaError> {
         // At least need 5 chaarcters to identify base ISA
         if isa.len() < 5 {
