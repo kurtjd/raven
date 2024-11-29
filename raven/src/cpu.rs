@@ -68,7 +68,7 @@ impl Cpu {
         let base_isa = &isa[..=4];
         match base_isa {
             "RV32I" | "RV32E" => self.base_isa = BaseIsa::RV32I,
-            "RV364I" | "RV64E" => self.base_isa = BaseIsa::RV64I,
+            "RV64I" | "RV64E" => self.base_isa = BaseIsa::RV64I,
             _ => return Err(IsaError::BaseNotSupported),
         }
 
