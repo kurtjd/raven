@@ -1,9 +1,9 @@
 [package]
-name = "raven"
+name = "raven-bin"
 version = "0.1.0"
 edition = "2021"
 authors = ["Kurtis Dinelle <kurtisdinelle@gmail.com>"]
 
 [workspace]
 [dependencies]
-raven-cpu = { path = "raven-cpu" }
+raven = { path = "raven" }

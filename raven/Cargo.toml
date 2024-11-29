@@ -1,7 +1,9 @@
 [package]
-name = "raven-cpu"
+name = "raven"
 version = "0.1.0"
 edition = "2021"
 authors = ["Kurtis Dinelle <kurtisdinelle@gmail.com>"]
 
 [dependencies]
+arbitrary-int = "1.2.7"
+bitbybit = "1.3.2"
