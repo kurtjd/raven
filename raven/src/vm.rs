@@ -11,6 +11,8 @@ const PUTI_ADDR: u64 = 0x1000_0001;
 const RAM_START: u64 = 0x8000_0000;
 const RAM_END: u64 = u64::MAX;
 
+const RETURN_REG: u8 = 10;
+
 macro_rules! to_ram_idx {
     ($addr:expr) => {
         (($addr - RAM_START) as usize)
@@ -183,12 +185,14 @@ impl VirtualMachine {
         Ok(Self { cpu, mc })
     }
 
-    pub fn start(&mut self) {
+    pub fn start(&mut self) -> u64 {
         self.cpu.halted = false;
 
         while !self.cpu.halted {
             self.cpu.step(&mut self.mc);
         }
+
+        self.cpu.read_gpr(RETURN_REG)
     }
 
     pub fn reset(&mut self) {
