@@ -96,7 +96,7 @@ impl Cpu {
 
         // Need to account for the fact that RV32I is limited to 32-bit addr space
         let mut addr = self.read_gpr(rs).wrapping_add(imm);
-        if let BaseIsa::RV32I = self.base_isa {
+        if matches!(self.base_isa, BaseIsa::RV32I) {
             addr &= 0xFFFF_FFFF;
         }
 
@@ -125,6 +125,14 @@ impl Cpu {
                 self.write_gpr(rd, val);
             }
 
+            funct3::LD => {
+                let val = match memory.loadd(addr) {
+                    Ok(w) => w,
+                    Err(_) => todo!(),
+                };
+                self.write_gpr(rd, val);
+            }
+
             funct3::LBU => {
                 let val = match memory.loadb(addr) {
                     Ok(b) => zero_ext!(b),
@@ -136,6 +144,14 @@ impl Cpu {
             funct3::LHU => {
                 let val = match memory.loadh(addr) {
                     Ok(h) => zero_ext!(h),
+                    Err(_) => todo!(),
+                };
+                self.write_gpr(rd, val);
+            }
+
+            funct3::LWU if matches!(self.base_isa, BaseIsa::RV64I) => {
+                let val = match memory.loadw(addr) {
+                    Ok(w) => zero_ext!(w),
                     Err(_) => todo!(),
                 };
                 self.write_gpr(rd, val);
@@ -214,27 +230,26 @@ impl Cpu {
                 self.write_gpr(rd, res);
             }
 
+            // Might be a shift operation
             _ => {
-                /* We treat shift ops as a R-type format, even though technically they are just a
-                 * special case of the I-type format. This is because we can use funct7 with funct3
-                 * (as a funct10) to identify SRAI from SRLI and we can use rs2 as the shift amount.
-                 */
-                let instr = InstrFormatR::new_with_raw_value(instr.raw_value());
-                let funct10 = instr.funct10().value();
-                let shamt = instr.rs2().value();
+                let shopt = instr.shopt().value();
+                let shamt = match self.base_isa {
+                    BaseIsa::RV32I => instr.shamt5().value(),
+                    BaseIsa::RV64I => instr.shamt6().value(),
+                };
 
-                match funct10 {
-                    funct10::SLLI => {
+                match shopt {
+                    shopt::SLLI => {
                         let res = rs_val << shamt;
                         self.write_gpr(rd, res);
                     }
 
-                    funct10::SRLI => {
+                    shopt::SRLI => {
                         let res = rs_val >> shamt;
                         self.write_gpr(rd, res);
                     }
 
-                    funct10::SRAI => {
+                    shopt::SRAI => {
                         let res = match self.base_isa {
                             BaseIsa::RV32I => ((rs_val as i32) >> shamt) as u64,
                             BaseIsa::RV64I => ((rs_val as i64) >> shamt) as u64,
@@ -257,8 +272,48 @@ impl Cpu {
         self.write_gpr(rd, res);
     }
 
-    pub(crate) fn handle_op_imm_32(&mut self, _instr: Instruction) {
-        todo!();
+    pub(crate) fn handle_op_imm_32(&mut self, instr: Instruction) {
+        if !matches!(self.base_isa, BaseIsa::RV64I) {
+            todo!();
+        }
+
+        let instr = InstrFormatI::new_with_raw_value(instr.raw_value());
+        let funct3 = instr.funct3().value();
+        let rd = instr.rd().value();
+        let rs = instr.rs1().value();
+        let rs_val = self.read_gpr(rs);
+        let imm = self.expand_imm_i(instr.imm().value());
+
+        match funct3 {
+            funct3::ADDIW => {
+                let res = sign_ext_w!(rs_val.wrapping_add(imm) as u32);
+                self.write_gpr(rd, res);
+            }
+
+            _ => {
+                let shopt = instr.shoptw().value();
+                let shamt = instr.shamt5().value();
+
+                match shopt {
+                    shopt::SLLIW => {
+                        let res = sign_ext_w!((rs_val << shamt) as u32);
+                        self.write_gpr(rd, res);
+                    }
+
+                    shopt::SRLIW => {
+                        let res = sign_ext_w!((rs_val as u32) >> shamt);
+                        self.write_gpr(rd, res);
+                    }
+
+                    shopt::SRAIW => {
+                        let res = sign_ext_w!(((rs_val as i32) >> shamt) as u32);
+                        self.write_gpr(rd, res);
+                    }
+
+                    _ => todo!(),
+                }
+            }
+        }
     }
 
     pub(crate) fn handle_b48(&mut self, _instr: Instruction) {
@@ -275,7 +330,7 @@ impl Cpu {
 
         // Need to account for the fact that RV32I is limited to 32-bit addr space
         let mut addr = self.read_gpr(rs1).wrapping_add(imm);
-        if let BaseIsa::RV32I = self.base_isa {
+        if matches!(self.base_isa, BaseIsa::RV32I) {
             addr &= 0xFFFF_FFFF;
         }
 
@@ -294,6 +349,13 @@ impl Cpu {
                 Ok(()) => (),
                 Err(_) => todo!(),
             },
+
+            funct3::SD if matches!(self.base_isa, BaseIsa::RV64I) => {
+                match memory.stored(addr, rs2_val) {
+                    Ok(()) => (),
+                    Err(_) => todo!(),
+                }
+            }
 
             // Handle invalid instruction exception
             _ => todo!(),
@@ -320,9 +382,10 @@ impl Cpu {
         let rs2 = instr.rs2().value();
         let rs2_val = self.read_gpr(rs2);
         let funct10 = instr.funct10().value();
-
-        // Shift operations only use the 5 LSBs of rs2 for the shift amount
-        let shamt = rs2_val & 0b11111;
+        let shamt = match self.base_isa {
+            BaseIsa::RV32I => rs2_val & 0b011111,
+            BaseIsa::RV64I => rs2_val & 0b111111,
+        };
 
         match funct10 {
             funct10::ADD => {
@@ -395,8 +458,48 @@ impl Cpu {
         self.write_gpr(rd, imm);
     }
 
-    pub(crate) fn handle_op_32(&mut self, _instr: Instruction) {
-        todo!();
+    pub(crate) fn handle_op_32(&mut self, instr: Instruction) {
+        if !matches!(self.base_isa, BaseIsa::RV64I) {
+            todo!();
+        }
+
+        let instr = InstrFormatR::new_with_raw_value(instr.raw_value());
+        let rd = instr.rd().value();
+        let rs1 = instr.rs1().value();
+        let rs1_val = self.read_gpr(rs1);
+        let rs2 = instr.rs2().value();
+        let rs2_val = self.read_gpr(rs2);
+        let funct10 = instr.funct10().value();
+        let shamt = rs2_val & 0b011111;
+
+        match funct10 {
+            funct10::ADDW => {
+                let res = sign_ext_w!(rs1_val.wrapping_add(rs2_val) as u32);
+                self.write_gpr(rd, res);
+            }
+
+            funct10::SUBW => {
+                let res = sign_ext_w!(rs1_val.wrapping_sub(rs2_val) as u32);
+                self.write_gpr(rd, res);
+            }
+
+            funct10::SLLW => {
+                let res = sign_ext_w!((rs1_val << shamt) as u32);
+                self.write_gpr(rd, res);
+            }
+
+            funct10::SRLW => {
+                let res = sign_ext_w!((rs1_val as u32) >> shamt);
+                self.write_gpr(rd, res);
+            }
+
+            funct10::SRAW => {
+                let res = sign_ext_w!((rs1_val as i32) >> shamt);
+                self.write_gpr(rd, res);
+            }
+
+            _ => todo!(),
+        }
     }
 
     pub(crate) fn handle_b64(&mut self, _instr: Instruction) {

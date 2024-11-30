@@ -1,5 +1,5 @@
 use crate::cpu::{BaseIsa, Cpu};
-use arbitrary_int::{u10, u12, u20, u3, u5, u7};
+use arbitrary_int::{u10, u12, u20, u3, u4, u5, u6, u7};
 use bitbybit::{bitenum, bitfield};
 
 pub(crate) mod funct3 {
@@ -25,6 +25,12 @@ pub(crate) mod funct3 {
     pub(crate) const ORI: u8 = 0b110;
     pub(crate) const ANDI: u8 = 0b111;
 
+    // RV64
+    pub(crate) const LWU: u8 = 0b110;
+    pub(crate) const LD: u8 = 0b011;
+    pub(crate) const SD: u8 = 0b011;
+    pub(crate) const ADDIW: u8 = 0b000;
+
     // Custom
     /* Halts the CPU.
      * Full instruction: 0x0000_000B
@@ -35,9 +41,6 @@ pub(crate) mod funct3 {
 #[allow(clippy::unusual_byte_groupings)]
 pub(crate) mod funct10 {
     // RV32
-    pub(crate) const SLLI: u16 = 0b0000000_001;
-    pub(crate) const SRLI: u16 = 0b0000000_101;
-    pub(crate) const SRAI: u16 = 0b0100000_101;
     pub(crate) const ADD: u16 = 0b0000000_000;
     pub(crate) const SUB: u16 = 0b0100000_000;
     pub(crate) const SLL: u16 = 0b0000000_001;
@@ -48,6 +51,25 @@ pub(crate) mod funct10 {
     pub(crate) const SRA: u16 = 0b0100000_101;
     pub(crate) const OR: u16 = 0b0000000_110;
     pub(crate) const AND: u16 = 0b0000000_111;
+
+    // RV64
+    pub(crate) const ADDW: u16 = 0b0000000_000;
+    pub(crate) const SUBW: u16 = 0b0100000_000;
+    pub(crate) const SLLW: u16 = 0b0000000_001;
+    pub(crate) const SRLW: u16 = 0b0000000_101;
+    pub(crate) const SRAW: u16 = 0b0100000_101;
+}
+
+pub(crate) mod shopt {
+    // RV32
+    pub(crate) const SLLI: u8 = 0b0001;
+    pub(crate) const SRLI: u8 = 0b0101;
+    pub(crate) const SRAI: u8 = 0b1101;
+
+    // RV64
+    pub(crate) const SLLIW: u8 = 0b00001;
+    pub(crate) const SRLIW: u8 = 0b00101;
+    pub(crate) const SRAIW: u8 = 0b10101;
 }
 
 pub(crate) mod funct12 {
@@ -162,6 +184,19 @@ pub(crate) struct InstrFormatI {
 
     #[bits(20..=31, r)]
     imm: u12,
+
+    #[bits(20..=24, r)]
+    shamt5: u5,
+
+    #[bits(20..=25, r)]
+    shamt6: u6,
+
+    // Not actual fields, but useful for creating single unique shift op ID
+    #[bits([12..=14, 30], r)]
+    shopt: u4,
+
+    #[bits([12..=14, 25, 30], r)]
+    shoptw: u5,
 
     // An alias for the imm field, used for SYSTEM opcodes
     #[bits(20..=31, r)]

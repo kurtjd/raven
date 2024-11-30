@@ -25,7 +25,7 @@ TBD
 
 ## TODO
 - ~~Implement RV32I~~
-- Implement RV64I
+- ~~Implement RV64I~~
 - Implement "M" extension
 - Implement "Zicsr" extension
 - Implement "F" extension
