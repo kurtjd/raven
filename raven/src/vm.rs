@@ -1,6 +1,6 @@
 use crate::{
     cpu::{Cpu, IsaError},
-    memory::{MemoryAccess, MemoryError},
+    memory::{Endian, MemoryAccess, MemoryError},
 };
 use std::fs::File;
 use std::io::{self, Read};
@@ -48,14 +48,19 @@ impl MemoryAccess for MemoryController {
         }
     }
 
-    fn loadh(&self, addr: u64) -> Result<u16, MemoryError> {
+    fn loadh(&self, addr: u64, endian: Endian) -> Result<u16, MemoryError> {
         match addr {
             RAM_START..=RAM_END => {
                 let idx = to_ram_idx!(addr);
                 if idx < self.memsz - 1 {
                     let bytes = &self.ram[idx..idx + 2];
                     let bytes: [u8; 2] = bytes.try_into().unwrap();
-                    Ok(u16::from_le_bytes(bytes))
+                    let bytes = match endian {
+                        Endian::Little => u16::from_le_bytes(bytes),
+                        Endian::Big => u16::from_be_bytes(bytes),
+                    };
+
+                    Ok(bytes)
                 } else {
                     Err(MemoryError::OutOfRange)
                 }
@@ -64,14 +69,19 @@ impl MemoryAccess for MemoryController {
         }
     }
 
-    fn loadw(&self, addr: u64) -> Result<u32, MemoryError> {
+    fn loadw(&self, addr: u64, endian: Endian) -> Result<u32, MemoryError> {
         match addr {
             RAM_START..=RAM_END => {
                 let idx = to_ram_idx!(addr);
                 if idx < self.memsz - 3 {
                     let bytes = &self.ram[idx..idx + 4];
                     let bytes: [u8; 4] = bytes.try_into().unwrap();
-                    Ok(u32::from_le_bytes(bytes))
+                    let bytes = match endian {
+                        Endian::Little => u32::from_le_bytes(bytes),
+                        Endian::Big => u32::from_be_bytes(bytes),
+                    };
+
+                    Ok(bytes)
                 } else {
                     Err(MemoryError::OutOfRange)
                 }
@@ -80,14 +90,19 @@ impl MemoryAccess for MemoryController {
         }
     }
 
-    fn loadd(&self, addr: u64) -> Result<u64, MemoryError> {
+    fn loadd(&self, addr: u64, endian: Endian) -> Result<u64, MemoryError> {
         match addr {
             RAM_START..=RAM_END => {
                 let idx = to_ram_idx!(addr);
                 if idx < self.memsz - 7 {
                     let bytes = &self.ram[idx..idx + 8];
                     let bytes: [u8; 8] = bytes.try_into().unwrap();
-                    Ok(u64::from_le_bytes(bytes))
+                    let bytes = match endian {
+                        Endian::Little => u64::from_le_bytes(bytes),
+                        Endian::Big => u64::from_be_bytes(bytes),
+                    };
+
+                    Ok(bytes)
                 } else {
                     Err(MemoryError::OutOfRange)
                 }
@@ -119,12 +134,16 @@ impl MemoryAccess for MemoryController {
         }
     }
 
-    fn storeh(&mut self, addr: u64, val: u16) -> Result<(), MemoryError> {
+    fn storeh(&mut self, addr: u64, val: u16, endian: Endian) -> Result<(), MemoryError> {
         match addr {
             RAM_START..=RAM_END => {
                 let idx = to_ram_idx!(addr);
                 if idx < self.memsz - 1 {
-                    let bytes = val.to_le_bytes();
+                    let bytes = match endian {
+                        Endian::Little => val.to_le_bytes(),
+                        Endian::Big => val.to_be_bytes(),
+                    };
+
                     self.ram[idx..idx + 2].copy_from_slice(&bytes);
                     Ok(())
                 } else {
@@ -135,12 +154,16 @@ impl MemoryAccess for MemoryController {
         }
     }
 
-    fn storew(&mut self, addr: u64, val: u32) -> Result<(), MemoryError> {
+    fn storew(&mut self, addr: u64, val: u32, endian: Endian) -> Result<(), MemoryError> {
         match addr {
             RAM_START..=RAM_END => {
                 let idx = to_ram_idx!(addr);
                 if idx < self.memsz - 3 {
-                    let bytes = val.to_le_bytes();
+                    let bytes = match endian {
+                        Endian::Little => val.to_le_bytes(),
+                        Endian::Big => val.to_be_bytes(),
+                    };
+
                     self.ram[idx..idx + 4].copy_from_slice(&bytes);
                     Ok(())
                 } else {
@@ -151,12 +174,16 @@ impl MemoryAccess for MemoryController {
         }
     }
 
-    fn stored(&mut self, addr: u64, val: u64) -> Result<(), MemoryError> {
+    fn stored(&mut self, addr: u64, val: u64, endian: Endian) -> Result<(), MemoryError> {
         match addr {
             RAM_START..=RAM_END => {
                 let idx = to_ram_idx!(addr);
                 if idx < self.memsz - 7 {
-                    let bytes = val.to_le_bytes();
+                    let bytes = match endian {
+                        Endian::Little => val.to_le_bytes(),
+                        Endian::Big => val.to_be_bytes(),
+                    };
+
                     self.ram[idx..idx + 8].copy_from_slice(&bytes);
                     Ok(())
                 } else {

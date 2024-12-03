@@ -267,7 +267,7 @@ impl Cpu {
     pub(crate) fn expand_imm_i(&self, imm: u16) -> u64 {
         let imm = (((imm << 4) as i16) >> 4) as u64;
 
-        match self.base_isa {
+        match self.xlen() {
             BaseIsa::RV32I => imm & 0xFFFF_FFFF,
             BaseIsa::RV64I => imm,
         }
@@ -280,7 +280,7 @@ impl Cpu {
     pub(crate) fn expand_imm_b(&self, imm: u16) -> u64 {
         let imm = (((imm << 4) as i16) >> 3) as u64;
 
-        match self.base_isa {
+        match self.xlen() {
             BaseIsa::RV32I => imm & 0xFFFF_FFFF,
             BaseIsa::RV64I => imm,
         }
@@ -289,7 +289,7 @@ impl Cpu {
     pub(crate) fn expand_imm_u(&self, imm: u32) -> u64 {
         let imm = ((imm << 12) as i32) as u64;
 
-        match self.base_isa {
+        match self.xlen() {
             BaseIsa::RV32I => imm & 0xFFFF_FFFF,
             BaseIsa::RV64I => imm,
         }
@@ -298,7 +298,7 @@ impl Cpu {
     pub(crate) fn expand_imm_j(&self, imm: u32) -> u64 {
         let imm = (((imm << 12) as i32) >> 11) as u64;
 
-        match self.base_isa {
+        match self.xlen() {
             BaseIsa::RV32I => imm & 0xFFFF_FFFF,
             BaseIsa::RV64I => imm,
         }

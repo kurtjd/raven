@@ -2,34 +2,6 @@ use crate::cpu::*;
 use crate::instructions::*;
 use crate::memory::*;
 
-// Sign extends a byte to a double-word
-macro_rules! sign_ext_b {
-    ($val:expr) => {
-        (($val as i8) as u64)
-    };
-}
-
-// Sign extends a half-word to a double-word
-macro_rules! sign_ext_h {
-    ($val:expr) => {
-        (($val as i16) as u64)
-    };
-}
-
-// Sign extends a word to a double-word
-macro_rules! sign_ext_w {
-    ($val:expr) => {
-        (($val as i32) as u64)
-    };
-}
-
-// Zero extends any value to a double-word
-macro_rules! zero_ext {
-    ($val:expr) => {
-        ($val as u64)
-    };
-}
-
 /* Not needed for functionality, but helpful for explicitly
  * showing an opcode should behave as a noop.
  */
@@ -78,7 +50,7 @@ impl Cpu {
     }
 
     pub(crate) fn handle_instr_c(&mut self, _instr: u16, _memory: &mut impl MemoryAccess) {
-        if self.extensions.c() {
+        if self.ialign() == Ialign::I16 {
             self.write_pc_next_add(2);
             todo!();
         } else {
@@ -96,13 +68,13 @@ impl Cpu {
 
         // Need to account for the fact that RV32I is limited to 32-bit addr space
         let mut addr = self.read_gpr(rs).wrapping_add(imm);
-        if matches!(self.base_isa, BaseIsa::RV32I) {
+        if matches!(self.xlen(), BaseIsa::RV32I) {
             addr &= 0xFFFF_FFFF;
         }
 
         match funct3 {
             funct3::LB => {
-                let val = match memory.loadb(addr) {
+                let val = match self.loadb(memory, addr) {
                     Ok(b) => sign_ext_b!(b),
                     Err(_) => todo!(),
                 };
@@ -110,7 +82,7 @@ impl Cpu {
             }
 
             funct3::LH => {
-                let val = match memory.loadh(addr) {
+                let val = match self.loadh(memory, addr) {
                     Ok(h) => sign_ext_h!(h),
                     Err(_) => todo!(),
                 };
@@ -118,7 +90,7 @@ impl Cpu {
             }
 
             funct3::LW => {
-                let val = match memory.loadw(addr) {
+                let val = match self.loadw(memory, addr) {
                     Ok(w) => sign_ext_w!(w),
                     Err(_) => todo!(),
                 };
@@ -126,7 +98,7 @@ impl Cpu {
             }
 
             funct3::LD => {
-                let val = match memory.loadd(addr) {
+                let val = match self.loadd(memory, addr) {
                     Ok(w) => w,
                     Err(_) => todo!(),
                 };
@@ -134,7 +106,7 @@ impl Cpu {
             }
 
             funct3::LBU => {
-                let val = match memory.loadb(addr) {
+                let val = match self.loadb(memory, addr) {
                     Ok(b) => zero_ext!(b),
                     Err(_) => todo!(),
                 };
@@ -142,15 +114,15 @@ impl Cpu {
             }
 
             funct3::LHU => {
-                let val = match memory.loadh(addr) {
+                let val = match self.loadh(memory, addr) {
                     Ok(h) => zero_ext!(h),
                     Err(_) => todo!(),
                 };
                 self.write_gpr(rd, val);
             }
 
-            funct3::LWU if matches!(self.base_isa, BaseIsa::RV64I) => {
-                let val = match memory.loadw(addr) {
+            funct3::LWU if self.xlen() == BaseIsa::RV64I => {
+                let val = match self.loadw(memory, addr) {
                     Ok(w) => zero_ext!(w),
                     Err(_) => todo!(),
                 };
@@ -202,7 +174,7 @@ impl Cpu {
             }
 
             funct3::SLTI => {
-                let cond = match self.base_isa {
+                let cond = match self.xlen() {
                     BaseIsa::RV32I => (rs_val as i32) < (imm as i32),
                     BaseIsa::RV64I => (rs_val as i64) < (imm as i64),
                 };
@@ -233,7 +205,7 @@ impl Cpu {
             // Might be a shift operation
             _ => {
                 let shopt = instr.shopt().value();
-                let shamt = match self.base_isa {
+                let shamt = match self.xlen() {
                     BaseIsa::RV32I => instr.shamt5().value(),
                     BaseIsa::RV64I => instr.shamt6().value(),
                 };
@@ -250,7 +222,7 @@ impl Cpu {
                     }
 
                     shopt::SRAI => {
-                        let res = match self.base_isa {
+                        let res = match self.xlen() {
                             BaseIsa::RV32I => ((rs_val as i32) >> shamt) as u64,
                             BaseIsa::RV64I => ((rs_val as i64) >> shamt) as u64,
                         };
@@ -273,7 +245,7 @@ impl Cpu {
     }
 
     pub(crate) fn handle_op_imm_32(&mut self, instr: Instruction) {
-        if !matches!(self.base_isa, BaseIsa::RV64I) {
+        if !matches!(self.xlen(), BaseIsa::RV64I) {
             todo!();
         }
 
@@ -330,28 +302,28 @@ impl Cpu {
 
         // Need to account for the fact that RV32I is limited to 32-bit addr space
         let mut addr = self.read_gpr(rs1).wrapping_add(imm);
-        if matches!(self.base_isa, BaseIsa::RV32I) {
+        if matches!(self.xlen(), BaseIsa::RV32I) {
             addr &= 0xFFFF_FFFF;
         }
 
         match funct3 {
-            funct3::SB => match memory.storeb(addr, rs2_val as u8) {
+            funct3::SB => match self.storeb(memory, addr, rs2_val as u8) {
                 Ok(()) => (),
                 Err(_) => todo!(),
             },
 
-            funct3::SH => match memory.storeh(addr, rs2_val as u16) {
+            funct3::SH => match self.storeh(memory, addr, rs2_val as u16) {
                 Ok(()) => (),
                 Err(_) => todo!(),
             },
 
-            funct3::SW => match memory.storew(addr, rs2_val as u32) {
+            funct3::SW => match self.storew(memory, addr, rs2_val as u32) {
                 Ok(()) => (),
                 Err(_) => todo!(),
             },
 
-            funct3::SD if matches!(self.base_isa, BaseIsa::RV64I) => {
-                match memory.stored(addr, rs2_val) {
+            funct3::SD if self.xlen() == BaseIsa::RV64I => {
+                match self.stored(memory, addr, rs2_val) {
                     Ok(()) => (),
                     Err(_) => todo!(),
                 }
@@ -382,7 +354,7 @@ impl Cpu {
         let rs2 = instr.rs2().value();
         let rs2_val = self.read_gpr(rs2);
         let funct10 = instr.funct10().value();
-        let shamt = match self.base_isa {
+        let shamt = match self.xlen() {
             BaseIsa::RV32I => rs2_val & 0b011111,
             BaseIsa::RV64I => rs2_val & 0b111111,
         };
@@ -399,7 +371,7 @@ impl Cpu {
             }
 
             funct10::SLT => {
-                let cond = match self.base_isa {
+                let cond = match self.xlen() {
                     BaseIsa::RV32I => (rs1_val as i32) < (rs2_val as i32),
                     BaseIsa::RV64I => (rs1_val as i64) < (rs2_val as i64),
                 };
@@ -438,7 +410,7 @@ impl Cpu {
             }
 
             funct10::SRA => {
-                let res = match self.base_isa {
+                let res = match self.xlen() {
                     BaseIsa::RV32I => ((rs1_val as i32) >> shamt) as u64,
                     BaseIsa::RV64I => ((rs1_val as i64) >> shamt) as u64,
                 };
@@ -459,7 +431,7 @@ impl Cpu {
     }
 
     pub(crate) fn handle_op_32(&mut self, instr: Instruction) {
-        if !matches!(self.base_isa, BaseIsa::RV64I) {
+        if !matches!(self.xlen(), BaseIsa::RV64I) {
             todo!();
         }
 
@@ -561,7 +533,7 @@ impl Cpu {
             }
 
             funct3::BLT => {
-                let cond = match self.base_isa {
+                let cond = match self.xlen() {
                     BaseIsa::RV32I => (rs1_val as i32) < (rs2_val as i32),
                     BaseIsa::RV64I => (rs1_val as i64) < (rs2_val as i64),
                 };
@@ -577,7 +549,7 @@ impl Cpu {
             }
 
             funct3::BGE => {
-                let cond = match self.base_isa {
+                let cond = match self.xlen() {
                     BaseIsa::RV32I => (rs1_val as i32) >= (rs2_val as i32),
                     BaseIsa::RV64I => (rs1_val as i64) >= (rs2_val as i64),
                 };
@@ -648,6 +620,8 @@ impl Cpu {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn test_zero_ext() {
         assert_eq!(0x0000_0000_0000_0000u64, zero_ext!(0x00u8));

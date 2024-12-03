@@ -1,7 +1,40 @@
+use crate::csr::{Mxl, PrivLevel};
 use crate::instructions::{ILenGroup, Instruction};
-use crate::memory::MemoryAccess;
+use crate::memory::*;
 use crate::registers::*;
 use bitbybit::bitfield;
+
+// Sign extends a byte to a double-word
+macro_rules! sign_ext_b {
+    ($val:expr) => {
+        (($val as i8) as u64)
+    };
+}
+pub(crate) use sign_ext_b;
+
+// Sign extends a half-word to a double-word
+macro_rules! sign_ext_h {
+    ($val:expr) => {
+        (($val as i16) as u64)
+    };
+}
+pub(crate) use sign_ext_h;
+
+// Sign extends a word to a double-word
+macro_rules! sign_ext_w {
+    ($val:expr) => {
+        (($val as i32) as u64)
+    };
+}
+pub(crate) use sign_ext_w;
+
+// Zero extends any value to a double-word
+macro_rules! zero_ext {
+    ($val:expr) => {
+        ($val as u64)
+    };
+}
+pub(crate) use zero_ext;
 
 #[derive(Debug)]
 pub enum IsaError {
@@ -10,12 +43,31 @@ pub enum IsaError {
     ExtNotSupported,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BaseIsa {
     RV32I,
     RV64I,
 }
 
-#[bitfield(u8)]
+#[derive(Clone, Copy, Debug)]
+pub enum Extension {
+    M,
+    A,
+    F,
+    D,
+    C,
+    S,
+    ZICSR,
+    ZIFENCEI,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Ialign {
+    I16,
+    I32,
+}
+
+#[bitfield(u8, default = 0)]
 pub(crate) struct Extensions {
     #[bit(0, rw)]
     m: bool,
@@ -42,17 +94,38 @@ pub(crate) struct Extensions {
     zifencei: bool,
 }
 
+#[derive(PartialEq, Clone, Copy)]
+pub(crate) enum PrivMode {
+    Machine,
+    Supervisor,
+    User,
+}
+
+impl TryFrom<PrivLevel> for PrivMode {
+    type Error = ();
+
+    fn try_from(level: PrivLevel) -> Result<Self, ()> {
+        match level {
+            PrivLevel::Machine => Ok(Self::Machine),
+            PrivLevel::Supervisor => Ok(Self::Supervisor),
+            PrivLevel::User => Ok(Self::User),
+            _ => Err(()),
+        }
+    }
+}
+
 pub struct Cpu {
     pub(crate) base_isa: BaseIsa,
     pub(crate) extensions: Extensions,
     pub(crate) reg: Registers,
+    pub(crate) priv_mode: PrivMode,
     pub halted: bool,
     reset_addr: u64,
 }
 
 impl Cpu {
     fn parse_isa(&mut self, isa: &str) -> Result<(), IsaError> {
-        // At least need 5 charcters to identify base ISA
+        // At least need 5 characters to identify base ISA
         if isa.len() < 5 {
             return Err(IsaError::Invalid);
         }
@@ -122,11 +195,132 @@ impl Cpu {
         Ok(())
     }
 
+    pub(crate) fn xlen(&self) -> BaseIsa {
+        if self.base_isa == BaseIsa::RV64I {
+            let xlen = match self.priv_mode {
+                PrivMode::Machine => self.reg.csr.misa.misa64().mxl(),
+                PrivMode::Supervisor => self.reg.csr.mstatus.mstatus64().sxl(),
+                PrivMode::User => self.reg.csr.mstatus.mstatus64().uxl(),
+            };
+
+            match xlen {
+                Mxl::Xlen32 => BaseIsa::RV32I,
+                _ => BaseIsa::RV64I,
+            }
+        } else {
+            BaseIsa::RV32I
+        }
+    }
+
+    pub(crate) fn ialign(&self) -> Ialign {
+        if self.ext_supported(Extension::C) {
+            Ialign::I16
+        } else {
+            Ialign::I32
+        }
+    }
+
+    pub(crate) fn ext_supported(&self, ext: Extension) -> bool {
+        let mext = match self.base_isa {
+            BaseIsa::RV32I => self.reg.csr.misa.misa32().extensions(),
+            BaseIsa::RV64I => self.reg.csr.misa.misa64().extensions(),
+        };
+
+        match ext {
+            Extension::M => mext.m(),
+            Extension::A => mext.a(),
+            Extension::F => mext.f(),
+            Extension::D => mext.d(),
+            Extension::C => mext.c(),
+            Extension::S => mext.s(),
+
+            // These cannot be toggled in machine mode
+            Extension::ZICSR => self.extensions.zicsr(),
+            Extension::ZIFENCEI => self.extensions.zicsr(),
+        }
+    }
+
+    pub(crate) fn _interrupts_enabled(&self) -> bool {
+        todo!();
+    }
+
+    pub(crate) fn endian(&self) -> Endian {
+        let be = match (self.base_isa, self.priv_mode) {
+            (BaseIsa::RV32I, PrivMode::Machine) => self.reg.csr.mstatus.mstatus32h().mbe(),
+            (BaseIsa::RV32I, PrivMode::Supervisor) => self.reg.csr.mstatus.mstatus32h().sbe(),
+            (BaseIsa::RV32I, PrivMode::User) => {
+                self.reg.csr.mstatus.mstatus32l().low_fields().ube()
+            }
+
+            (BaseIsa::RV64I, PrivMode::Machine) => self.reg.csr.mstatus.mstatus64().mbe(),
+            (BaseIsa::RV64I, PrivMode::Supervisor) => self.reg.csr.mstatus.mstatus64().sbe(),
+            (BaseIsa::RV64I, PrivMode::User) => self.reg.csr.mstatus.mstatus64().low_fields().ube(),
+        };
+
+        match be {
+            false => Endian::Little,
+            true => Endian::Big,
+        }
+    }
+
+    pub(crate) fn loadb(&self, memory: &impl MemoryAccess, addr: u64) -> Result<u8, MemoryError> {
+        memory.loadb(addr)
+    }
+
+    pub(crate) fn loadh(&self, memory: &impl MemoryAccess, addr: u64) -> Result<u16, MemoryError> {
+        memory.loadh(addr, self.endian())
+    }
+
+    pub(crate) fn loadw(&self, memory: &impl MemoryAccess, addr: u64) -> Result<u32, MemoryError> {
+        memory.loadw(addr, self.endian())
+    }
+
+    pub(crate) fn loadd(&self, memory: &impl MemoryAccess, addr: u64) -> Result<u64, MemoryError> {
+        memory.loadd(addr, self.endian())
+    }
+
+    pub(crate) fn storeb(
+        &mut self,
+        memory: &mut impl MemoryAccess,
+        addr: u64,
+        val: u8,
+    ) -> Result<(), MemoryError> {
+        memory.storeb(addr, val)
+    }
+
+    pub(crate) fn storeh(
+        &mut self,
+        memory: &mut impl MemoryAccess,
+        addr: u64,
+        val: u16,
+    ) -> Result<(), MemoryError> {
+        memory.storeh(addr, val, self.endian())
+    }
+
+    pub(crate) fn storew(
+        &mut self,
+        memory: &mut impl MemoryAccess,
+        addr: u64,
+        val: u32,
+    ) -> Result<(), MemoryError> {
+        memory.storew(addr, val, self.endian())
+    }
+
+    pub(crate) fn stored(
+        &mut self,
+        memory: &mut impl MemoryAccess,
+        addr: u64,
+        val: u64,
+    ) -> Result<(), MemoryError> {
+        memory.stored(addr, val, self.endian())
+    }
+
     pub fn new(isa: &str, reset_addr: u64) -> Result<Self, IsaError> {
         let mut cpu = Self {
-            base_isa: BaseIsa::RV32I,
-            extensions: Extensions::new_with_raw_value(0),
             reg: Registers::default(),
+            base_isa: BaseIsa::RV32I,
+            extensions: Extensions::default(),
+            priv_mode: PrivMode::Machine,
             reset_addr,
             halted: false,
         };
@@ -141,10 +335,13 @@ impl Cpu {
         self.halted = false;
         self.reg = Registers::default();
         self.reg.pc = self.reset_addr;
+        self.reset_csr();
+
+        self.priv_mode = PrivMode::Machine;
     }
 
     pub fn step(&mut self, memory: &mut impl MemoryAccess) {
-        let instr = match memory.loadw(self.reg.pc) {
+        let instr = match memory.loadw(self.read_pc(), Endian::Little) {
             Ok(w) => w,
             Err(e) => panic!("{:?}", e),
         };
