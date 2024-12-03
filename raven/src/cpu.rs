@@ -333,11 +333,10 @@ impl Cpu {
 
     pub fn reset(&mut self) {
         self.halted = false;
+        self.priv_mode = PrivMode::Machine;
         self.reg = Registers::default();
         self.reg.pc = self.reset_addr;
         self.reset_csr();
-
-        self.priv_mode = PrivMode::Machine;
     }
 
     pub fn step(&mut self, memory: &mut impl MemoryAccess) {

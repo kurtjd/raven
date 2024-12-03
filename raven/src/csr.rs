@@ -103,7 +103,7 @@ pub(crate) enum Mxl {
     Xlen128 = 0b11,
 }
 
-#[bitfield(u26)]
+#[bitfield(u26, default = 0)]
 pub(crate) struct MisaExt {
     #[bit(0, rw)]
     a: bool,
@@ -113,7 +113,7 @@ pub(crate) struct MisaExt {
     c: bool,
     #[bit(3, rw)]
     d: bool,
-    #[bit(4, r)]
+    #[bit(4, rw)]
     e: bool, // Read-only
     #[bit(5, rw)]
     f: bool,
@@ -159,7 +159,7 @@ pub(crate) struct MisaExt {
     z: bool, // Reserved
 }
 
-#[bitfield(u32)]
+#[bitfield(u32, default = 0)]
 pub(crate) struct Misa32 {
     #[bits(0..=25, rw)]
     extensions: MisaExt,
@@ -171,7 +171,7 @@ pub(crate) struct Misa32 {
     mxl: Mxl,
 }
 
-#[bitfield(u64)]
+#[bitfield(u64, default = 0)]
 pub(crate) struct Misa64 {
     #[bits(0..=25, rw)]
     extensions: MisaExt,
@@ -607,6 +607,32 @@ impl Cpu {
                 self.reg.csr.misa = Misa::new_with_raw_value(0).with_misa64(misa64);
             }
         }
+
+        let mxl = match self.base_isa {
+            BaseIsa::RV32I => Mxl::Xlen32,
+            BaseIsa::RV64I => Mxl::Xlen64,
+        };
+
+        let ext = self.extensions;
+        let misa_ext = MisaExt::default()
+            .with_m(ext.m())
+            .with_a(ext.a())
+            .with_f(ext.f())
+            .with_d(ext.d())
+            .with_c(ext.c())
+            .with_s(ext.s())
+            .with_u(ext.s());
+
+        match self.xlen() {
+            BaseIsa::RV32I => {
+                let misa32 = Misa32::default().with_mxl(mxl).with_extensions(misa_ext);
+                self.reg.csr.misa = Misa::default().with_misa32(misa32);
+            }
+            BaseIsa::RV64I => {
+                let misa64 = Misa64::default().with_mxl(mxl).with_extensions(misa_ext);
+                self.reg.csr.misa = Misa::default().with_misa64(misa64);
+            }
+        }
     }
 
     fn mstatus_write(&mut self, val: u64) {
@@ -627,6 +653,19 @@ impl Cpu {
         // TODO: For now, simply write bits as-is but handle little details later
         let mstatus32h = Mstatus32H::new_with_raw_value(val as u32);
         self.reg.csr.mstatus = self.reg.csr.mstatus.with_mstatus32h(mstatus32h);
+    }
+
+    fn mstatus_reset(&mut self) {
+        let mut mstatus = Mstatus::default();
+
+        if self.xlen() == BaseIsa::RV64I && self.ext_supported(Extension::S) {
+            let mstatus64 = Mstatus64::default()
+                .with_sxl(Mxl::Xlen64)
+                .with_uxl(Mxl::Xlen64);
+            mstatus = mstatus.with_mstatus64(mstatus64);
+        }
+
+        self.reg.csr.mstatus = mstatus;
     }
 
     fn mtvec_write(&mut self, val: u64) {
@@ -910,8 +949,5 @@ impl Cpu {
     pub(crate) fn reset_csr(&mut self) {
         self.reg.csr = Csr::default();
         self.misa_reset();
-
-        // TODO: Handle manually resetting CSRs as necessary
-        // This is not handled by impl Default for Csr because default states rely on CPU struct
     }
 }
