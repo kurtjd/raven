@@ -31,6 +31,15 @@ pub(crate) mod funct3 {
     pub(crate) const SD: u8 = 0b011;
     pub(crate) const ADDIW: u8 = 0b000;
 
+    // Zicsr
+    pub(crate) const PRIV: u8 = 0b000;
+    pub(crate) const CSRRW: u8 = 0b001;
+    pub(crate) const CSRRS: u8 = 0b010;
+    pub(crate) const CSRRC: u8 = 0b011;
+    pub(crate) const CSRRWI: u8 = 0b101;
+    pub(crate) const CSRRSI: u8 = 0b110;
+    pub(crate) const CSRRCI: u8 = 0b111;
+
     // Custom
     /* Halts the CPU.
      * Full instruction: 0x0000_000B
@@ -74,8 +83,11 @@ pub(crate) mod shopt {
 
 pub(crate) mod funct12 {
     // RV32
-    pub(crate) const _ECALL: u16 = 0b000000000000;
-    pub(crate) const _EBREAK: u16 = 0b000000000001;
+    pub(crate) const ECALL: u16 = 0b000000000000;
+    pub(crate) const EBREAK: u16 = 0b000000000001;
+    pub(crate) const WFI: u16 = 0b000100000101;
+    pub(crate) const MRET: u16 = 0b001100000100;
+    pub(crate) const SRET: u16 = 0b000100000100;
 }
 
 #[bitenum(u5, exhaustive = true)]

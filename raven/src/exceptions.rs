@@ -1,25 +1,27 @@
 use crate::cpu::*;
 
+#[derive(Debug)]
 pub(crate) enum Trap {
-    InstructionAddressMisaligned,
-    InstructionAccessFault,
+    _InstructionAddressMisaligned,
+    _InstructionAccessFault,
     IllegalInstruction,
-    Breakpoint,
-    LoadAddressMisaligned,
-    LoadAccessFault,
-    StoreAddressMisaligned,
-    StoreAccessFault,
-    EnvironmentCallFromU,
-    EnvironmentCallFromS,
-    EnvironmentCallFromM,
-    InstructionPageFault,
-    LoadPageFault,
-    StorePageFault,
-    SoftwareCheck,
-    HardwareError,
+    _Breakpoint,
+    _LoadAddressMisaligned,
+    _LoadAccessFault,
+    _StoreAddressMisaligned,
+    _StoreAccessFault,
+    _EnvironmentCallFromU,
+    _EnvironmentCallFromS,
+    _EnvironmentCallFromM,
+    _InstructionPageFault,
+    _LoadPageFault,
+    _StorePageFault,
+    _SoftwareCheck,
+    _HardwareError,
 }
 
-pub enum Interrupt {
+#[derive(Debug)]
+pub enum _Interrupt {
     SupervisorSoftware,
     MachineSoftware,
     SupervisorTimer,
@@ -30,6 +32,11 @@ pub enum Interrupt {
 }
 
 impl Cpu {
-    pub(crate) fn trap(&mut self, trap: Trap) {}
-    pub(crate) fn interrupt(&mut self, interrupt: Interrupt) {}
+    pub(crate) fn trap(&mut self, trap: Trap) {
+        todo!("Trap: {:?}", trap);
+    }
+
+    pub(crate) fn _interrupt(&mut self, interrupt: _Interrupt) {
+        todo!("Interrupt: {:?}", interrupt);
+    }
 }

@@ -43,7 +43,6 @@ mod csr_addr {
     pub(super) const MCAUSE: u16 = 0x342;
     pub(super) const MTVAL: u16 = 0x343;
     pub(super) const MIP: u16 = 0x344;
-    pub(super) const MTINST: u16 = 0x34A;
 
     // Machine configuration
     pub(super) const MENVCFG: u16 = 0x30A;
@@ -86,13 +85,16 @@ enum Rw {
     Ro = 0b11,
 }
 
-#[bitfield(u12)]
+#[bitfield(u16)]
 struct CsrAddr {
     #[bits(8..=9, r)]
     priv_lvl: PrivLevel,
 
     #[bits(10..=11, r)]
     rw: Rw,
+
+    #[bits(12..=15, r)]
+    illegal: u4,
 }
 
 #[bitenum(u2, exhaustive = true)]
@@ -510,6 +512,7 @@ pub(crate) struct Csr {
     pub(crate) mstatus: Mstatus,
     mvendorid: Mvendorid,
     marchid: Marchid,
+    mimpid: Mimpid,
     mhartid: Mhartid,
     mtvec: Mtvec,
     medeleg: Medeleg,
@@ -570,6 +573,13 @@ impl Cpu {
             .with_v(false)
             .with_x(false);
 
+        /* E is read-only (thus cannot be written directly),
+         * but should always be the complement of I.
+         * raven currently does not really distinguish between I and E base sets,
+         * but keep things consistent for software anyway.
+         */
+        tmp_ext = tmp_ext.with_e(!tmp_ext.i());
+
         /* These extensions should only be set if the base set of extensions supports them as well.
          * Technically d and f require base support Zicsr as well, but can never get here unless
          * Zicsr is supported, so don't bother checking for it.
@@ -615,6 +625,7 @@ impl Cpu {
 
         let ext = self.extensions;
         let misa_ext = MisaExt::default()
+            .with_i(true)
             .with_m(ext.m())
             .with_a(ext.a())
             .with_f(ext.f())
@@ -828,7 +839,7 @@ impl Cpu {
     }
 
     pub(crate) fn read_csr(&self, addr: u16) -> Result<u64, CsrError> {
-        let csr_addr = CsrAddr::new_with_raw_value(addr.into());
+        let csr_addr = CsrAddr::new_with_raw_value(addr);
         if !self.csr_has_priv(csr_addr) {
             return Err(CsrError::InsufficientPrivilege);
         }
@@ -837,6 +848,7 @@ impl Cpu {
             csr_addr::MISA => self.reg.csr.misa.raw_value(),
             csr_addr::MVENDORID => self.reg.csr.mvendorid.raw_value() as u64,
             csr_addr::MARCHID => self.reg.csr.marchid.raw_value(),
+            csr_addr::MIMPID => self.reg.csr.mimpid.raw_value(),
             csr_addr::MHARTID => self.reg.csr.mhartid.raw_value(),
             csr_addr::MSTATUS if self.xlen() == BaseIsa::RV32I => {
                 self.reg.csr.mstatus.mstatus32l().raw_value() as u64
@@ -905,7 +917,7 @@ impl Cpu {
     }
 
     pub(crate) fn write_csr(&mut self, addr: u16, val: u64) -> Result<(), CsrError> {
-        let csr_addr = CsrAddr::new_with_raw_value(addr.into());
+        let csr_addr = CsrAddr::new_with_raw_value(addr);
 
         if !self.csr_has_priv(csr_addr) {
             return Err(CsrError::InsufficientPrivilege);
@@ -938,7 +950,19 @@ impl Cpu {
             csr_addr::MSCRATCH => self.reg.csr.mscratch = val,
             csr_addr::MEPC => self.mepc_write(val),
             csr_addr::MCAUSE => self.mcause_write(val),
-            csr_addr::MTVAL => self.reg.csr.mtval = val,
+            csr_addr::MTVAL => self.mtval_write(val),
+
+            /* Not implemented by raven, but software should still be able to write
+             * without raising an exception so just discard the write.
+             */
+            csr_addr::MCONFIGPTR => (),
+            csr_addr::MENVCFG => (),
+            csr_addr::MENVCFGH if self.xlen() == BaseIsa::RV32I => (),
+            csr_addr::MSECCFG => (),
+            csr_addr::MSECCFGH if self.xlen() == BaseIsa::RV32I => (),
+            csr_addr::MHPMCOUNTER_START..=csr_addr::MHPMCOUNTER_END => (),
+            csr_addr::MHPMCOUNTERH_START..=csr_addr::MHPMCOUNTERH_END
+                if self.xlen() == BaseIsa::RV32I => {}
 
             _ => return Err(CsrError::NotSupported),
         }
@@ -949,5 +973,6 @@ impl Cpu {
     pub(crate) fn reset_csr(&mut self) {
         self.reg.csr = Csr::default();
         self.misa_reset();
+        self.mstatus_reset();
     }
 }

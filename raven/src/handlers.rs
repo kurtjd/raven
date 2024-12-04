@@ -1,11 +1,12 @@
 use crate::cpu::*;
+use crate::exceptions::Trap;
 use crate::instructions::*;
 use crate::memory::*;
 
 /* Not needed for functionality, but helpful for explicitly
  * showing an opcode should behave as a noop.
  */
-macro_rules! noop {
+macro_rules! nop {
     () => {};
 }
 
@@ -156,7 +157,7 @@ impl Cpu {
          * are essentially noops. May revisit this in the future if emulating a weaker memory
          * model becomes a supported feature.
          */
-        noop!();
+        nop!();
     }
 
     pub(crate) fn handle_op_imm(&mut self, instr: Instruction) {
@@ -601,8 +602,141 @@ impl Cpu {
         self.write_pc_next_add(imm);
     }
 
-    pub(crate) fn handle_system(&mut self, _instr: Instruction) {
-        todo!();
+    pub(crate) fn handle_system(&mut self, instr: Instruction) {
+        let instr = InstrFormatI::new_with_raw_value(instr.raw_value());
+        let funct3 = instr.funct3().value();
+        let rd = instr.rd().value();
+
+        /* rs1 represents source register for register Zicsr instructions,
+         * but 5-bit unsigned immediate in Zicsr immediate variants.
+         */
+        let rs = instr.rs1().value();
+        let rs_val = self.read_gpr(rs);
+        let uimm = zero_ext!(instr.rs1().value());
+
+        /* The imm field represents funct12 in PRIV instructions
+         * but csr_addr in Zicsr instructions.
+         */
+        let funct12 = instr.imm().value();
+        let csr_addr = instr.imm().value();
+
+        match funct3 {
+            funct3::PRIV => match funct12 {
+                funct12::EBREAK => todo!(),
+                funct12::ECALL => todo!(),
+                funct12::WFI => todo!(),
+                funct12::MRET => todo!(),
+                funct12::SRET if self.ext_supported(Extension::S) => todo!(),
+
+                _ => self.trap(Trap::IllegalInstruction),
+            },
+
+            funct3::CSRRW if self.ext_supported(Extension::ZICSR) => {
+                // The CSR should not be read at all if rd == x0
+                let csr = if rd != 0 {
+                    if let Ok(csr) = self.read_csr(csr_addr) {
+                        csr
+                    } else {
+                        self.trap(Trap::IllegalInstruction);
+                        return;
+                    }
+                } else {
+                    0
+                };
+
+                if self.write_csr(csr_addr, rs_val).is_ok() {
+                    self.write_gpr(rd, csr);
+                } else {
+                    self.trap(Trap::IllegalInstruction);
+                }
+            }
+
+            funct3::CSRRS if self.ext_supported(Extension::ZICSR) => {
+                let csr = if let Ok(csr) = self.read_csr(csr_addr) {
+                    csr
+                } else {
+                    self.trap(Trap::IllegalInstruction);
+                    return;
+                };
+
+                // Write to CSR should not be performed at all if rs1 == x0
+                if rs == 0 || self.write_csr(csr_addr, csr | rs_val).is_ok() {
+                    self.write_gpr(rd, csr);
+                } else {
+                    self.trap(Trap::IllegalInstruction);
+                }
+            }
+
+            funct3::CSRRC if self.ext_supported(Extension::ZICSR) => {
+                let csr = if let Ok(csr) = self.read_csr(csr_addr) {
+                    csr
+                } else {
+                    self.trap(Trap::IllegalInstruction);
+                    return;
+                };
+
+                // Write to CSR should not be performed at all if rs1 == x0
+                if rs == 0 || self.write_csr(csr_addr, csr & !rs_val).is_ok() {
+                    self.write_gpr(rd, csr);
+                } else {
+                    self.trap(Trap::IllegalInstruction);
+                }
+            }
+
+            funct3::CSRRWI if self.ext_supported(Extension::ZICSR) => {
+                // The CSR should not be read at all if rd == x0
+                let csr = if rd != 0 {
+                    if let Ok(csr) = self.read_csr(csr_addr) {
+                        csr
+                    } else {
+                        self.trap(Trap::IllegalInstruction);
+                        return;
+                    }
+                } else {
+                    0
+                };
+
+                if self.write_csr(csr_addr, uimm).is_ok() {
+                    self.write_gpr(rd, csr);
+                } else {
+                    self.trap(Trap::IllegalInstruction);
+                }
+            }
+
+            funct3::CSRRSI if self.ext_supported(Extension::ZICSR) => {
+                let csr = if let Ok(csr) = self.read_csr(csr_addr) {
+                    csr
+                } else {
+                    self.trap(Trap::IllegalInstruction);
+                    return;
+                };
+
+                // Write to CSR should not be performed at all if uimm == 0
+                if uimm == 0 || self.write_csr(csr_addr, csr | uimm).is_ok() {
+                    self.write_gpr(rd, csr);
+                } else {
+                    self.trap(Trap::IllegalInstruction);
+                }
+            }
+
+            funct3::CSRRCI if self.ext_supported(Extension::ZICSR) => {
+                let csr = if let Ok(csr) = self.read_csr(csr_addr) {
+                    csr
+                } else {
+                    self.trap(Trap::IllegalInstruction);
+                    return;
+                };
+
+                // Write to CSR should not be performed at all if rs1 == x0
+                if uimm == 0 || self.write_csr(csr_addr, csr & !uimm).is_ok() {
+                    self.write_gpr(rd, csr);
+                } else {
+                    self.trap(Trap::IllegalInstruction);
+                }
+            }
+
+            _ => self.trap(Trap::IllegalInstruction),
+        }
     }
 
     pub(crate) fn handle_op_ve(&mut self, _instr: Instruction) {
