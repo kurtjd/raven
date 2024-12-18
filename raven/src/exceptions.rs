@@ -1,15 +1,15 @@
 use crate::cpu::*;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub(crate) enum Trap {
     _InstructionAddressMisaligned,
-    _InstructionAccessFault,
+    InstructionAccessFault,
     IllegalInstruction,
     _Breakpoint,
     _LoadAddressMisaligned,
-    _LoadAccessFault,
+    LoadAccessFault,
     _StoreAddressMisaligned,
-    _StoreAccessFault,
+    StoreAccessFault,
     _EnvironmentCallFromU,
     _EnvironmentCallFromS,
     _EnvironmentCallFromM,
@@ -20,7 +20,36 @@ pub(crate) enum Trap {
     _HardwareError,
 }
 
-#[derive(Debug)]
+impl From<Trap> for u64 {
+    fn from(t: Trap) -> Self {
+        match t {
+            Trap::_InstructionAddressMisaligned => 0,
+            Trap::InstructionAccessFault => 1,
+            Trap::IllegalInstruction => 2,
+            Trap::_Breakpoint => 3,
+            Trap::_LoadAddressMisaligned => 4,
+            Trap::LoadAccessFault => 5,
+            Trap::_StoreAddressMisaligned => 6,
+            Trap::StoreAccessFault => 7,
+            Trap::_EnvironmentCallFromU => 8,
+            Trap::_EnvironmentCallFromS => 9,
+            Trap::_EnvironmentCallFromM => 11,
+            Trap::_InstructionPageFault => 12,
+            Trap::_LoadPageFault => 13,
+            Trap::_StorePageFault => 15,
+            Trap::_SoftwareCheck => 18,
+            Trap::_HardwareError => 19,
+        }
+    }
+}
+
+impl From<Trap> for u32 {
+    fn from(t: Trap) -> Self {
+        u64::from(t) as u32
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
 pub enum _Interrupt {
     SupervisorSoftware,
     MachineSoftware,
@@ -33,7 +62,20 @@ pub enum _Interrupt {
 
 impl Cpu {
     pub(crate) fn trap(&mut self, trap: Trap) {
-        todo!("Trap: {:?}", trap);
+        // Store the cause of the exception
+        self.mcause_write(u64::from(trap), false);
+
+        // Store the current pc
+        self.reg.csr.mepc = self.read_pc();
+
+        // Store additional info about trap
+        // TODO: Store relevant info, but for now store 0
+        self.reg.csr.mtval = 0;
+
+        // Jump to the vector base-address
+        // Traps always jump to base, regardless of mode
+        let base = u64::from(self.reg.csr.mtvec.base());
+        self.write_pc_next(base);
     }
 
     pub(crate) fn _interrupt(&mut self, interrupt: _Interrupt) {

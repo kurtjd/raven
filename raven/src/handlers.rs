@@ -55,8 +55,7 @@ impl Cpu {
             self.write_pc_next_add(2);
             todo!();
         } else {
-            // Raise exception
-            todo!();
+            self.trap(Trap::IllegalInstruction);
         }
     }
 
@@ -77,7 +76,10 @@ impl Cpu {
             funct3::LB => {
                 let val = match self.loadb(memory, addr) {
                     Ok(b) => sign_ext_b!(b),
-                    Err(_) => todo!(),
+                    Err(_) => {
+                        self.trap(Trap::LoadAccessFault);
+                        return;
+                    }
                 };
                 self.write_gpr(rd, val);
             }
@@ -85,7 +87,10 @@ impl Cpu {
             funct3::LH => {
                 let val = match self.loadh(memory, addr) {
                     Ok(h) => sign_ext_h!(h),
-                    Err(_) => todo!(),
+                    Err(_) => {
+                        self.trap(Trap::LoadAccessFault);
+                        return;
+                    }
                 };
                 self.write_gpr(rd, val);
             }
@@ -93,7 +98,10 @@ impl Cpu {
             funct3::LW => {
                 let val = match self.loadw(memory, addr) {
                     Ok(w) => sign_ext_w!(w),
-                    Err(_) => todo!(),
+                    Err(_) => {
+                        self.trap(Trap::LoadAccessFault);
+                        return;
+                    }
                 };
                 self.write_gpr(rd, val);
             }
@@ -101,7 +109,10 @@ impl Cpu {
             funct3::LD => {
                 let val = match self.loadd(memory, addr) {
                     Ok(w) => w,
-                    Err(_) => todo!(),
+                    Err(_) => {
+                        self.trap(Trap::LoadAccessFault);
+                        return;
+                    }
                 };
                 self.write_gpr(rd, val);
             }
@@ -109,7 +120,10 @@ impl Cpu {
             funct3::LBU => {
                 let val = match self.loadb(memory, addr) {
                     Ok(b) => zero_ext!(b),
-                    Err(_) => todo!(),
+                    Err(_) => {
+                        self.trap(Trap::LoadAccessFault);
+                        return;
+                    }
                 };
                 self.write_gpr(rd, val);
             }
@@ -117,7 +131,10 @@ impl Cpu {
             funct3::LHU => {
                 let val = match self.loadh(memory, addr) {
                     Ok(h) => zero_ext!(h),
-                    Err(_) => todo!(),
+                    Err(_) => {
+                        self.trap(Trap::LoadAccessFault);
+                        return;
+                    }
                 };
                 self.write_gpr(rd, val);
             }
@@ -125,13 +142,15 @@ impl Cpu {
             funct3::LWU if self.xlen() == BaseIsa::RV64I => {
                 let val = match self.loadw(memory, addr) {
                     Ok(w) => zero_ext!(w),
-                    Err(_) => todo!(),
+                    Err(_) => {
+                        self.trap(Trap::LoadAccessFault);
+                        return;
+                    }
                 };
                 self.write_gpr(rd, val);
             }
 
-            // Handle invalid instruction exception
-            _ => todo!(),
+            _ => self.trap(Trap::IllegalInstruction),
         }
     }
 
@@ -146,9 +165,7 @@ impl Cpu {
 
         match funct3 {
             funct3::HALT => self.halted = true,
-
-            // Handle invalid instruction exception
-            _ => todo!(),
+            _ => self.trap(Trap::IllegalInstruction),
         }
     }
 
@@ -230,8 +247,7 @@ impl Cpu {
                         self.write_gpr(rd, res);
                     }
 
-                    // Handle invalid instruction exception
-                    _ => todo!(),
+                    _ => self.trap(Trap::IllegalInstruction),
                 }
             }
         }
@@ -246,8 +262,9 @@ impl Cpu {
     }
 
     pub(crate) fn handle_op_imm_32(&mut self, instr: Instruction) {
-        if !matches!(self.xlen(), BaseIsa::RV64I) {
-            todo!();
+        if self.xlen() != BaseIsa::RV64I {
+            self.trap(Trap::IllegalInstruction);
+            return;
         }
 
         let instr = InstrFormatI::new_with_raw_value(instr.raw_value());
@@ -283,7 +300,7 @@ impl Cpu {
                         self.write_gpr(rd, res);
                     }
 
-                    _ => todo!(),
+                    _ => self.trap(Trap::IllegalInstruction),
                 }
             }
         }
@@ -303,35 +320,34 @@ impl Cpu {
 
         // Need to account for the fact that RV32I is limited to 32-bit addr space
         let mut addr = self.read_gpr(rs1).wrapping_add(imm);
-        if matches!(self.xlen(), BaseIsa::RV32I) {
+        if self.xlen() == BaseIsa::RV32I {
             addr &= 0xFFFF_FFFF;
         }
 
         match funct3 {
             funct3::SB => match self.storeb(memory, addr, rs2_val as u8) {
                 Ok(()) => (),
-                Err(_) => todo!(),
+                Err(_) => self.trap(Trap::StoreAccessFault),
             },
 
             funct3::SH => match self.storeh(memory, addr, rs2_val as u16) {
                 Ok(()) => (),
-                Err(_) => todo!(),
+                Err(_) => self.trap(Trap::StoreAccessFault),
             },
 
             funct3::SW => match self.storew(memory, addr, rs2_val as u32) {
                 Ok(()) => (),
-                Err(_) => todo!(),
+                Err(_) => self.trap(Trap::StoreAccessFault),
             },
 
             funct3::SD if self.xlen() == BaseIsa::RV64I => {
                 match self.stored(memory, addr, rs2_val) {
                     Ok(()) => (),
-                    Err(_) => todo!(),
+                    Err(_) => self.trap(Trap::StoreAccessFault),
                 }
             }
 
-            // Handle invalid instruction exception
-            _ => todo!(),
+            _ => self.trap(Trap::IllegalInstruction),
         }
     }
 
@@ -418,8 +434,7 @@ impl Cpu {
                 self.write_gpr(rd, res);
             }
 
-            // Handle invalid instruction exception
-            _ => todo!(),
+            _ => self.trap(Trap::IllegalInstruction),
         }
     }
 
@@ -432,8 +447,9 @@ impl Cpu {
     }
 
     pub(crate) fn handle_op_32(&mut self, instr: Instruction) {
-        if !matches!(self.xlen(), BaseIsa::RV64I) {
-            todo!();
+        if self.xlen() != BaseIsa::RV64I {
+            self.trap(Trap::IllegalInstruction);
+            return;
         }
 
         let instr = InstrFormatR::new_with_raw_value(instr.raw_value());
@@ -471,7 +487,7 @@ impl Cpu {
                 self.write_gpr(rd, res);
             }
 
-            _ => todo!(),
+            _ => self.trap(Trap::IllegalInstruction),
         }
     }
 
@@ -565,8 +581,7 @@ impl Cpu {
                 }
             }
 
-            // Handle invalid instruction exception
-            _ => todo!(),
+            _ => self.trap(Trap::IllegalInstruction),
         }
     }
 

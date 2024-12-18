@@ -195,7 +195,7 @@ pub(crate) struct Misa {
 }
 
 #[bitfield(u32, default = RAVEN_VENDOR_ID)]
-struct Mvendorid {
+pub(crate) struct Mvendorid {
     #[bits(0..=6, r)]
     _offset: u7,
 
@@ -204,19 +204,19 @@ struct Mvendorid {
 }
 
 #[bitfield(u64, default = RAVEN_ARCH_ID)]
-struct Marchid {
+pub(crate) struct Marchid {
     #[bits(0..=63, r)]
     _archid: u64,
 }
 
 #[bitfield(u64, default = 0)]
-struct Mhartid {
+pub(crate) struct Mhartid {
     #[bits(0..=63, r)]
     hartid: u64,
 }
 
 #[bitfield(u64, default = RAVEN_IMPL_ID)]
-struct Mimpid {
+pub(crate) struct Mimpid {
     #[bits(0..=63, r)]
     _impl: u64,
 }
@@ -336,7 +336,7 @@ pub(crate) struct Mstatus {
 }
 
 #[bitenum(u2, exhaustive = false)]
-enum MtvecMode {
+pub(crate) enum MtvecMode {
     DIRECT = 0b00,
     VECTORED = 0b01,
 }
@@ -351,7 +351,7 @@ pub(crate) struct Mtvec {
 }
 
 #[bitfield(u64, default = 0)]
-struct Medeleg {
+pub(crate) struct Medeleg {
     #[bits(0..=31, rw)]
     medelegl: u32,
 
@@ -360,19 +360,19 @@ struct Medeleg {
 }
 
 #[bitfield(u64, default = 0)]
-struct Mideleg {
+pub(crate) struct Mideleg {
     #[bits(0..=63, rw)]
     mideleg: u64,
 }
 
 #[bitfield(u48, default = 0)]
-struct MiCustom {
+pub(crate) struct MiCustom {
     #[bits(0..=47, rw)]
     custom: u48,
 }
 
 #[bitfield(u64, default = 0)]
-struct Mip {
+pub(crate) struct Mip {
     #[bits([0, 2, 3, 6, 8, 10, 12, 14..=15], r)]
     reserved: u9,
 
@@ -402,7 +402,7 @@ struct Mip {
 }
 
 #[bitfield(u64, default = 0)]
-struct Mie {
+pub(crate) struct Mie {
     #[bits([0, 2, 3, 6, 8, 10, 12, 14..=15], r)]
     reserved: u9,
 
@@ -432,7 +432,7 @@ struct Mie {
 }
 
 #[bitfield(u64, default = 0)]
-struct Mcycle {
+pub(crate) struct Mcycle {
     #[bits(0..=31, rw)]
     mcyclel: u32,
 
@@ -441,7 +441,7 @@ struct Mcycle {
 }
 
 #[bitfield(u64, default = 0)]
-struct Minstret {
+pub(crate) struct Minstret {
     #[bits(0..=31, rw)]
     minstretl: u32,
 
@@ -450,7 +450,7 @@ struct Minstret {
 }
 
 #[bitfield(u32, default = 0)]
-struct Mcounteren {
+pub(crate) struct Mcounteren {
     #[bit(0, rw)]
     cy: bool,
 
@@ -465,7 +465,7 @@ struct Mcounteren {
 }
 
 #[bitfield(u32, default = 0)]
-struct Mcountinhibit {
+pub(crate) struct Mcountinhibit {
     #[bit(0, rw)]
     cy: bool,
 
@@ -480,7 +480,7 @@ struct Mcountinhibit {
 }
 
 #[bitfield(u32, default = 0)]
-struct Mcause32 {
+pub(crate) struct Mcause32 {
     #[bits(0..=30, rw)]
     code: u31,
 
@@ -489,7 +489,7 @@ struct Mcause32 {
 }
 
 #[bitfield(u64, default = 0)]
-struct Mcause64 {
+pub(crate) struct Mcause64 {
     #[bits(0..=62, rw)]
     code: u63,
 
@@ -498,39 +498,39 @@ struct Mcause64 {
 }
 
 #[bitfield(u64, default = 0)]
-struct Mcause {
+pub(crate) struct Mcause {
     #[bits(0..=31, rw)]
     mcause32: Mcause32,
 
     #[bits(0..=63, rw)]
-    mcause63: Mcause64,
+    mcause64: Mcause64,
 }
 
 #[derive(Default)]
 pub(crate) struct Csr {
     pub(crate) misa: Misa,
     pub(crate) mstatus: Mstatus,
-    mvendorid: Mvendorid,
-    marchid: Marchid,
-    mimpid: Mimpid,
-    mhartid: Mhartid,
-    mtvec: Mtvec,
-    medeleg: Medeleg,
-    mideleg: Mideleg,
-    mip: Mip,
-    mie: Mie,
-    mcycle: Mcycle,
-    minstret: Minstret,
-    mcounteren: Mcounteren,
-    mcountinhibit: Mcountinhibit,
-    mscratch: u64,
-    mepc: u64,
-    mcause: Mcause,
-    mtval: u64,
+    pub(crate) mvendorid: Mvendorid,
+    pub(crate) marchid: Marchid,
+    pub(crate) mimpid: Mimpid,
+    pub(crate) mhartid: Mhartid,
+    pub(crate) mtvec: Mtvec,
+    pub(crate) medeleg: Medeleg,
+    pub(crate) mideleg: Mideleg,
+    pub(crate) mip: Mip,
+    pub(crate) mie: Mie,
+    pub(crate) mcycle: Mcycle,
+    pub(crate) minstret: Minstret,
+    pub(crate) mcounteren: Mcounteren,
+    pub(crate) mcountinhibit: Mcountinhibit,
+    pub(crate) mscratch: u64,
+    pub(crate) mepc: u64,
+    pub(crate) mcause: Mcause,
+    pub(crate) mtval: u64,
 }
 
 impl Cpu {
-    fn misa_write(&mut self, val: u64) {
+    fn misa_write_raw(&mut self, val: u64) {
         let tmp = Misa::new_with_raw_value(val);
 
         // Since MXL is WARL read-only, simply ignore it and only focus on extensions
@@ -646,7 +646,7 @@ impl Cpu {
         }
     }
 
-    fn mstatus_write(&mut self, val: u64) {
+    fn mstatus_write_raw(&mut self, val: u64) {
         // TODO: For now, simply write bits as is but handle little details later
         match self.xlen() {
             BaseIsa::RV32I => {
@@ -660,7 +660,7 @@ impl Cpu {
         }
     }
 
-    fn mstatush_write(&mut self, val: u64) {
+    fn mstatush_write_raw(&mut self, val: u64) {
         // TODO: For now, simply write bits as-is but handle little details later
         let mstatus32h = Mstatus32H::new_with_raw_value(val as u32);
         self.reg.csr.mstatus = self.reg.csr.mstatus.with_mstatus32h(mstatus32h);
@@ -679,7 +679,7 @@ impl Cpu {
         self.reg.csr.mstatus = mstatus;
     }
 
-    fn mtvec_write(&mut self, val: u64) {
+    fn mtvec_write_raw(&mut self, val: u64) {
         let mtvec = Mtvec::new_with_raw_value(val);
         let base = mtvec.base();
         let mode = mtvec.mode();
@@ -695,7 +695,7 @@ impl Cpu {
         }
     }
 
-    fn medeleg_write(&mut self, val: u64) {
+    fn medeleg_write_raw(&mut self, val: u64) {
         // TODO: Handle read-only zero WARL bits for exceptions that can't be delegated
         match self.xlen() {
             BaseIsa::RV32I => self.reg.csr.medeleg = self.reg.csr.medeleg.with_medelegl(val as u32),
@@ -703,17 +703,17 @@ impl Cpu {
         }
     }
 
-    fn medelegh_write(&mut self, val: u64) {
+    fn medelegh_write_raw(&mut self, val: u64) {
         // TODO: Handle read-only zero WARL bits for exceptions that can't be delegated
         self.reg.csr.medeleg = self.reg.csr.medeleg.with_medelegh(val as u32);
     }
 
-    fn mideleg_write(&mut self, val: u64) {
+    fn mideleg_write_raw(&mut self, val: u64) {
         // No apparent edge-cases for mideleg, so may remove this function in the future
         self.reg.csr.mideleg = Mideleg::new_with_raw_value(val);
     }
 
-    fn mip_write(&mut self, val: u64) {
+    fn mip_write_raw(&mut self, val: u64) {
         // MEIP, MTIP, and MSIP are read-only to software and set externally
         // Ssscofpmf extension not supported by raven thus lcofip is read-only zero
         let tmp_mip = Mip::new_with_raw_value(val);
@@ -729,7 +729,7 @@ impl Cpu {
         }
     }
 
-    fn mie_write(&mut self, val: u64) {
+    fn mie_write_raw(&mut self, val: u64) {
         // Ssscofpmf extension not supported by raven thus lcofip is read-only zero
         let tmp_mie = Mie::new_with_raw_value(val);
 
@@ -752,18 +752,18 @@ impl Cpu {
         }
     }
 
-    fn mcycle_write(&mut self, val: u64) {
+    fn mcycle_write_raw(&mut self, val: u64) {
         match self.xlen() {
             BaseIsa::RV32I => self.reg.csr.mcycle = self.reg.csr.mcycle.with_mcyclel(val as u32),
             BaseIsa::RV64I => self.reg.csr.mcycle = Mcycle::new_with_raw_value(val),
         }
     }
 
-    fn mcycleh_write(&mut self, val: u64) {
+    fn mcycleh_write_raw(&mut self, val: u64) {
         self.reg.csr.mcycle = self.reg.csr.mcycle.with_mcycleh(val as u32);
     }
 
-    fn minstret_write(&mut self, val: u64) {
+    fn minstret_write_raw(&mut self, val: u64) {
         match self.xlen() {
             BaseIsa::RV32I => {
                 self.reg.csr.minstret = self.reg.csr.minstret.with_minstretl(val as u32)
@@ -772,11 +772,11 @@ impl Cpu {
         }
     }
 
-    fn minstreth_write(&mut self, val: u64) {
+    fn minstreth_write_raw(&mut self, val: u64) {
         self.reg.csr.minstret = self.reg.csr.minstret.with_minstreth(val as u32);
     }
 
-    fn mcounteren_write(&mut self, val: u64) {
+    fn mcounteren_write_raw(&mut self, val: u64) {
         // hpcounters are currently not supported by raven, so ensure they remain read-only zero
         let tmp = Mcounteren::new_with_raw_value(val as u32);
         self.reg.csr.mcounteren = self
@@ -788,7 +788,7 @@ impl Cpu {
             .with_ir(tmp.ir());
     }
 
-    fn mcountinhibit_write(&mut self, val: u64) {
+    fn mcountinhibit_write_raw(&mut self, val: u64) {
         // hpcounters are currently not supported by raven, so ensure they remain read-only zero
         // tm is read-only zero
         let tmp = Mcountinhibit::new_with_raw_value(val as u32);
@@ -800,7 +800,7 @@ impl Cpu {
             .with_ir(tmp.ir());
     }
 
-    fn mepc_read(&self) -> u64 {
+    fn mepc_read_raw(&self) -> u64 {
         // Bit 1 should always appear as cleared when ialign = 32
         match self.ialign() {
             Ialign::I16 => self.reg.csr.mepc,
@@ -808,12 +808,12 @@ impl Cpu {
         }
     }
 
-    fn mepc_write(&mut self, val: u64) {
+    fn mepc_write_raw(&mut self, val: u64) {
         // Bit 0 should always be clear
         self.reg.csr.mepc = val & !1;
     }
 
-    fn mcause_write(&mut self, val: u64) {
+    fn mcause_write_raw(&mut self, val: u64) {
         /* MCAUSE is WLRL, so it's the software's responsibility to ensure only legal values
          * are written, as illegal values are implementation-defined. For simplicity we simply
          * allow illegal values to be written.
@@ -821,7 +821,7 @@ impl Cpu {
         self.reg.csr.mcause = Mcause::new_with_raw_value(val);
     }
 
-    fn mtval_write(&mut self, val: u64) {
+    fn mtval_write_raw(&mut self, val: u64) {
         /* MTVAL is WARL, but the only stipulation is it must be able to hold all valid
          * addresses. It can optionally hold invalid addresses, thus we just directly write
          * the raw value.
@@ -835,6 +835,19 @@ impl Cpu {
         } else {
             // If here, priv lvl in address is reserved, but will be handled by caller
             true
+        }
+    }
+
+    pub(crate) fn mcause_write(&mut self, code: u64, interrupt: bool) {
+        match self.xlen() {
+            BaseIsa::RV32I => {
+                let mcause32 = Mcause32::new_with_raw_value(code as u32).with_interrupt(interrupt);
+                self.reg.csr.mcause = Mcause::default().with_mcause32(mcause32);
+            }
+            BaseIsa::RV64I => {
+                let mcause64 = Mcause64::new_with_raw_value(code).with_interrupt(interrupt);
+                self.reg.csr.mcause = Mcause::default().with_mcause64(mcause64);
+            }
         }
     }
 
@@ -893,7 +906,7 @@ impl Cpu {
             }
             csr_addr::MCOUNTINHIBIT => self.reg.csr.mcountinhibit.raw_value() as u64,
             csr_addr::MSCRATCH => self.reg.csr.mscratch,
-            csr_addr::MEPC => self.mepc_read(),
+            csr_addr::MEPC => self.mepc_read_raw(),
             csr_addr::MCAUSE => self.reg.csr.mcause.raw_value(),
             csr_addr::MTVAL => self.reg.csr.mtval,
 
@@ -928,29 +941,31 @@ impl Cpu {
         }
 
         match addr {
-            csr_addr::MISA => self.misa_write(val),
-            csr_addr::MSTATUS => self.mstatus_write(val),
-            csr_addr::MSTATUSH if self.xlen() == BaseIsa::RV32I => self.mstatush_write(val),
-            csr_addr::MTVEC => self.mtvec_write(val),
-            csr_addr::MIDELEG if self.ext_supported(Extension::S) => self.mideleg_write(val),
-            csr_addr::MEDELEG if self.ext_supported(Extension::S) => self.medeleg_write(val),
+            csr_addr::MISA => self.misa_write_raw(val),
+            csr_addr::MSTATUS => self.mstatus_write_raw(val),
+            csr_addr::MSTATUSH if self.xlen() == BaseIsa::RV32I => self.mstatush_write_raw(val),
+            csr_addr::MTVEC => self.mtvec_write_raw(val),
+            csr_addr::MIDELEG if self.ext_supported(Extension::S) => self.mideleg_write_raw(val),
+            csr_addr::MEDELEG if self.ext_supported(Extension::S) => self.medeleg_write_raw(val),
             csr_addr::MEDELEGH
                 if self.ext_supported(Extension::S) && self.xlen() == BaseIsa::RV32I =>
             {
-                self.medelegh_write(val)
+                self.medelegh_write_raw(val)
             }
-            csr_addr::MIP => self.mip_write(val),
-            csr_addr::MIE => self.mie_write(val),
-            csr_addr::MCYCLE => self.mcycle_write(val),
-            csr_addr::MCYCLEH if self.xlen() == BaseIsa::RV32I => self.mcycleh_write(val),
-            csr_addr::MINSTRET => self.minstret_write(val),
-            csr_addr::MINSTRETH if self.xlen() == BaseIsa::RV32I => self.minstreth_write(val),
-            csr_addr::MCOUNTEREN if self.ext_supported(Extension::S) => self.mcounteren_write(val),
-            csr_addr::MCOUNTINHIBIT => self.mcountinhibit_write(val),
+            csr_addr::MIP => self.mip_write_raw(val),
+            csr_addr::MIE => self.mie_write_raw(val),
+            csr_addr::MCYCLE => self.mcycle_write_raw(val),
+            csr_addr::MCYCLEH if self.xlen() == BaseIsa::RV32I => self.mcycleh_write_raw(val),
+            csr_addr::MINSTRET => self.minstret_write_raw(val),
+            csr_addr::MINSTRETH if self.xlen() == BaseIsa::RV32I => self.minstreth_write_raw(val),
+            csr_addr::MCOUNTEREN if self.ext_supported(Extension::S) => {
+                self.mcounteren_write_raw(val)
+            }
+            csr_addr::MCOUNTINHIBIT => self.mcountinhibit_write_raw(val),
             csr_addr::MSCRATCH => self.reg.csr.mscratch = val,
-            csr_addr::MEPC => self.mepc_write(val),
-            csr_addr::MCAUSE => self.mcause_write(val),
-            csr_addr::MTVAL => self.mtval_write(val),
+            csr_addr::MEPC => self.mepc_write_raw(val),
+            csr_addr::MCAUSE => self.mcause_write_raw(val),
+            csr_addr::MTVAL => self.mtval_write_raw(val),
 
             /* Not implemented by raven, but software should still be able to write
              * without raising an exception so just discard the write.

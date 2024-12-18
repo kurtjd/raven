@@ -1,4 +1,5 @@
 use crate::csr::{Mxl, PrivLevel};
+use crate::exceptions::*;
 use crate::instructions::{ILenGroup, Instruction};
 use crate::memory::*;
 use crate::registers::*;
@@ -342,7 +343,10 @@ impl Cpu {
     pub fn step(&mut self, memory: &mut impl MemoryAccess) {
         let instr = match memory.loadw(self.read_pc(), Endian::Little) {
             Ok(w) => w,
-            Err(e) => panic!("{:?}", e),
+            Err(_) => {
+                self.trap(Trap::InstructionAccessFault);
+                return;
+            }
         };
         let instr = Instruction::new_with_raw_value(instr);
 
