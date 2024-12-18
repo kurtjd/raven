@@ -637,10 +637,22 @@ impl Cpu {
 
         match funct3 {
             funct3::PRIV => match funct12 {
-                funct12::EBREAK => todo!(),
-                funct12::ECALL => todo!(),
-                funct12::WFI => todo!(),
-                funct12::MRET => todo!(),
+                funct12::EBREAK => self.trap(Trap::Breakpoint),
+                funct12::ECALL => match self.priv_mode {
+                    PrivMode::User => self.trap(Trap::EnvironmentCallFromU),
+                    PrivMode::Supervisor => self.trap(Trap::EnvironmentCallFromS),
+                    PrivMode::Machine => self.trap(Trap::EnvironmentCallFromM),
+                },
+
+                // It is legal to implement WFI as a NOP as per spec.
+                funct12::WFI => {
+                    nop!();
+                }
+
+                funct12::MRET if self.priv_mode == PrivMode::Machine => {
+                    // TODO: Handle interrupt stack pop
+                    self.write_pc_next(self.reg.csr.mepc);
+                }
                 funct12::SRET if self.ext_supported(Extension::S) => todo!(),
 
                 _ => self.trap(Trap::IllegalInstruction),

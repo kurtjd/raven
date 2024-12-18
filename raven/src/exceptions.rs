@@ -5,14 +5,14 @@ pub(crate) enum Trap {
     _InstructionAddressMisaligned,
     InstructionAccessFault,
     IllegalInstruction,
-    _Breakpoint,
+    Breakpoint,
     _LoadAddressMisaligned,
     LoadAccessFault,
     _StoreAddressMisaligned,
     StoreAccessFault,
-    _EnvironmentCallFromU,
-    _EnvironmentCallFromS,
-    _EnvironmentCallFromM,
+    EnvironmentCallFromU,
+    EnvironmentCallFromS,
+    EnvironmentCallFromM,
     _InstructionPageFault,
     _LoadPageFault,
     _StorePageFault,
@@ -26,14 +26,14 @@ impl From<Trap> for u64 {
             Trap::_InstructionAddressMisaligned => 0,
             Trap::InstructionAccessFault => 1,
             Trap::IllegalInstruction => 2,
-            Trap::_Breakpoint => 3,
+            Trap::Breakpoint => 3,
             Trap::_LoadAddressMisaligned => 4,
             Trap::LoadAccessFault => 5,
             Trap::_StoreAddressMisaligned => 6,
             Trap::StoreAccessFault => 7,
-            Trap::_EnvironmentCallFromU => 8,
-            Trap::_EnvironmentCallFromS => 9,
-            Trap::_EnvironmentCallFromM => 11,
+            Trap::EnvironmentCallFromU => 8,
+            Trap::EnvironmentCallFromS => 9,
+            Trap::EnvironmentCallFromM => 11,
             Trap::_InstructionPageFault => 12,
             Trap::_LoadPageFault => 13,
             Trap::_StorePageFault => 15,
@@ -62,6 +62,8 @@ pub enum _Interrupt {
 
 impl Cpu {
     pub(crate) fn trap(&mut self, trap: Trap) {
+        // TODO: Handle delegations
+
         // Store the cause of the exception
         self.mcause_write(u64::from(trap), false);
 
