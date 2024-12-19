@@ -14,10 +14,20 @@ fn op_test(isa: &str, path: &Path) {
 
 #[rstest]
 fn test_32ui(#[files("tests/bin/rv32ui-p-*")] path: PathBuf) {
-    op_test("RV32I", &path);
+    op_test("RV32I_Zicsr", &path);
 }
 
 #[rstest]
 fn test_64ui(#[files("tests/bin/rv64ui-p-*")] path: PathBuf) {
-    op_test("RV64I", &path);
+    op_test("RV64I_Zicsr", &path);
+}
+
+#[rstest]
+fn test_32mi(#[files("tests/bin/rv32mi-p-*")] path: PathBuf) {
+    op_test("RV32I_Zicsr", &path);
+}
+
+#[rstest]
+fn test_64mi(#[files("tests/bin/rv64mi-p-*")] path: PathBuf) {
+    op_test("RV64I_Zicsr", &path);
 }

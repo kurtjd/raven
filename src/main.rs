@@ -7,7 +7,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let bin = &args[1];
 
-    let mut vm = VirtualMachine::new("RV32I_Zicsr", MEM_SZ).unwrap();
+    let mut vm = VirtualMachine::new("RV64I_Zicsr", MEM_SZ).unwrap();
     vm.load_binary(bin).unwrap();
     vm.start();
 }

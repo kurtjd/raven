@@ -2,7 +2,7 @@ use crate::cpu::*;
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) enum Trap {
-    _InstructionAddressMisaligned,
+    InstructionAddressMisaligned,
     InstructionAccessFault,
     IllegalInstruction,
     Breakpoint,
@@ -23,7 +23,7 @@ pub(crate) enum Trap {
 impl From<Trap> for u64 {
     fn from(t: Trap) -> Self {
         match t {
-            Trap::_InstructionAddressMisaligned => 0,
+            Trap::InstructionAddressMisaligned => 0,
             Trap::InstructionAccessFault => 1,
             Trap::IllegalInstruction => 2,
             Trap::Breakpoint => 3,
@@ -74,10 +74,14 @@ impl Cpu {
         // TODO: Store relevant info, but for now store 0
         self.reg.csr.mtval = 0;
 
-        // Jump to the vector base-address
+        // Jump to the vector base-address (always 4 byte aligned hence left shift)
         // Traps always jump to base, regardless of mode
-        let base = u64::from(self.reg.csr.mtvec.base());
+        let base = u64::from(self.reg.csr.mtvec.base()) << 2;
         self.write_pc_next(base);
+
+        /*println!("TRAP: {:?}", trap);
+        println!("PC: 0x{:X}", self.read_pc());
+        println!("Next PC: 0x{:X}", self.read_pc_next());*/
     }
 
     pub(crate) fn _interrupt(&mut self, interrupt: _Interrupt) {

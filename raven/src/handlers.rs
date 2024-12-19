@@ -222,7 +222,12 @@ impl Cpu {
 
             // Might be a shift operation
             _ => {
-                let shopt = instr.shopt().value();
+                let shopt = match self.xlen() {
+                    BaseIsa::RV32I => instr.shopt().value(),
+
+                    // This bit is used for shamt in RV64 so just mask it off to find shopt
+                    BaseIsa::RV64I => instr.shopt().value() & !(1 << 3),
+                };
                 let shamt = match self.xlen() {
                     BaseIsa::RV32I => instr.shamt5().value(),
                     BaseIsa::RV64I => instr.shamt6().value(),
@@ -281,7 +286,7 @@ impl Cpu {
             }
 
             _ => {
-                let shopt = instr.shoptw().value();
+                let shopt = instr.shopt().value();
                 let shamt = instr.shamt5().value();
 
                 match shopt {
@@ -534,18 +539,26 @@ impl Cpu {
         let rs1_val = self.read_gpr(rs1);
         let rs2 = instr.rs2().value();
         let rs2_val = self.read_gpr(rs2);
-        let imm = self.expand_imm_b(instr.imm().value());
+        let addr = self.expand_imm_b(instr.imm().value());
 
         match funct3 {
             funct3::BEQ => {
                 if rs1_val == rs2_val {
-                    self.write_pc_next_add(imm);
+                    if addr % 4 == 0 || self.ext_supported(Extension::C) {
+                        self.write_pc_next_add(addr);
+                    } else {
+                        self.trap(Trap::InstructionAddressMisaligned);
+                    }
                 }
             }
 
             funct3::BNE => {
                 if rs1_val != rs2_val {
-                    self.write_pc_next_add(imm);
+                    if addr % 4 == 0 || self.ext_supported(Extension::C) {
+                        self.write_pc_next_add(addr);
+                    } else {
+                        self.trap(Trap::InstructionAddressMisaligned);
+                    }
                 }
             }
 
@@ -555,13 +568,21 @@ impl Cpu {
                     BaseIsa::RV64I => (rs1_val as i64) < (rs2_val as i64),
                 };
                 if cond {
-                    self.write_pc_next_add(imm);
+                    if addr % 4 == 0 || self.ext_supported(Extension::C) {
+                        self.write_pc_next_add(addr);
+                    } else {
+                        self.trap(Trap::InstructionAddressMisaligned);
+                    }
                 }
             }
 
             funct3::BLTU => {
                 if rs1_val < rs2_val {
-                    self.write_pc_next_add(imm);
+                    if addr % 4 == 0 || self.ext_supported(Extension::C) {
+                        self.write_pc_next_add(addr);
+                    } else {
+                        self.trap(Trap::InstructionAddressMisaligned);
+                    }
                 }
             }
 
@@ -571,13 +592,21 @@ impl Cpu {
                     BaseIsa::RV64I => (rs1_val as i64) >= (rs2_val as i64),
                 };
                 if cond {
-                    self.write_pc_next_add(imm);
+                    if addr % 4 == 0 || self.ext_supported(Extension::C) {
+                        self.write_pc_next_add(addr);
+                    } else {
+                        self.trap(Trap::InstructionAddressMisaligned);
+                    }
                 }
             }
 
             funct3::BGEU => {
                 if rs1_val >= rs2_val {
-                    self.write_pc_next_add(imm);
+                    if addr % 4 == 0 || self.ext_supported(Extension::C) {
+                        self.write_pc_next_add(addr);
+                    } else {
+                        self.trap(Trap::InstructionAddressMisaligned);
+                    }
                 }
             }
 
@@ -592,13 +621,19 @@ impl Cpu {
         let imm = self.expand_imm_i(instr.imm().value());
 
         // Must set the LSB of the resulting sum to 0
-        let res = self.read_gpr(rs).wrapping_add(imm) & !0b1;
+        let addr = self.read_gpr(rs).wrapping_add(imm) & !0b1;
+
+        // Destination addr must be aligned to 4 bytes if C extension not active
+        if addr % 4 != 0 && !self.ext_supported(Extension::C) {
+            self.trap(Trap::InstructionAddressMisaligned);
+            return;
+        }
 
         // Store address of next instruction in rd
         self.write_gpr(rd, self.read_pc_next());
 
         // Then set next pc as result from above
-        self.write_pc_next(res);
+        self.write_pc_next(addr);
     }
 
     pub(crate) fn handle_reserved(&mut self, _instr: Instruction) {
@@ -608,13 +643,19 @@ impl Cpu {
     pub(crate) fn handle_jal(&mut self, instr: Instruction) {
         let instr = InstrFormatJ::new_with_raw_value(instr.raw_value());
         let rd = instr.rd().value();
-        let imm = self.expand_imm_j(instr.imm().value());
+        let addr = self.expand_imm_j(instr.imm().value());
+
+        // Destination addr must be aligned to 4 bytes if C extension not active
+        if addr % 4 != 0 && !self.ext_supported(Extension::C) {
+            self.trap(Trap::InstructionAddressMisaligned);
+            return;
+        }
 
         // Store address of next instruction in rd
         self.write_gpr(rd, self.read_pc_next());
 
         // Then set next pc as (current pc + imm)
-        self.write_pc_next_add(imm);
+        self.write_pc_next_add(addr);
     }
 
     pub(crate) fn handle_system(&mut self, instr: Instruction) {

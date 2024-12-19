@@ -95,11 +95,11 @@ pub(crate) struct Extensions {
     zifencei: bool,
 }
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, PartialOrd, Clone, Copy)]
 pub(crate) enum PrivMode {
-    Machine,
-    Supervisor,
     User,
+    Supervisor,
+    Machine,
 }
 
 impl TryFrom<PrivLevel> for PrivMode {
@@ -345,6 +345,7 @@ impl Cpu {
             Ok(w) => w,
             Err(_) => {
                 self.trap(Trap::InstructionAccessFault);
+                self.update_pc();
                 return;
             }
         };

@@ -1,5 +1,5 @@
 use crate::cpu::{BaseIsa, Cpu};
-use arbitrary_int::{u10, u12, u20, u3, u4, u5, u6, u7};
+use arbitrary_int::{u10, u12, u20, u3, u5, u6, u7};
 use bitbybit::{bitenum, bitfield};
 
 pub(crate) mod funct3 {
@@ -69,16 +69,17 @@ pub(crate) mod funct10 {
     pub(crate) const SRAW: u16 = 0b0100000_101;
 }
 
+#[allow(clippy::unusual_byte_groupings)]
 pub(crate) mod shopt {
     // RV32
-    pub(crate) const SLLI: u8 = 0b0001;
-    pub(crate) const SRLI: u8 = 0b0101;
-    pub(crate) const SRAI: u8 = 0b1101;
+    pub(crate) const SLLI: u16 = 0b0000000_001;
+    pub(crate) const SRLI: u16 = 0b0000000_101;
+    pub(crate) const SRAI: u16 = 0b0100000_101;
 
     // RV64
-    pub(crate) const SLLIW: u8 = 0b00001;
-    pub(crate) const SRLIW: u8 = 0b00101;
-    pub(crate) const SRAIW: u8 = 0b10101;
+    pub(crate) const SLLIW: u16 = 0b0000000_001;
+    pub(crate) const SRLIW: u16 = 0b0000000_101;
+    pub(crate) const SRAIW: u16 = 0b0100000_101;
 }
 
 pub(crate) mod funct12 {
@@ -86,8 +87,8 @@ pub(crate) mod funct12 {
     pub(crate) const ECALL: u16 = 0b000000000000;
     pub(crate) const EBREAK: u16 = 0b000000000001;
     pub(crate) const WFI: u16 = 0b000100000101;
-    pub(crate) const MRET: u16 = 0b001100000100;
-    pub(crate) const SRET: u16 = 0b000100000100;
+    pub(crate) const MRET: u16 = 0b001100000010;
+    pub(crate) const SRET: u16 = 0b000100000010;
 }
 
 #[bitenum(u5, exhaustive = true)]
@@ -204,11 +205,8 @@ pub(crate) struct InstrFormatI {
     shamt6: u6,
 
     // Not actual fields, but useful for creating single unique shift op ID
-    #[bits([12..=14, 30], r)]
-    shopt: u4,
-
-    #[bits([12..=14, 25, 30], r)]
-    shoptw: u5,
+    #[bits([12..=14, 25..=31], r)]
+    shopt: u10,
 
     // An alias for the imm field, used for SYSTEM opcodes
     #[bits(20..=31, r)]

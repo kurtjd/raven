@@ -66,8 +66,15 @@ mod csr_addr {
     pub(super) const MHPMCOUNTER_END: u16 = 0xB1F;
     pub(super) const MHPMCOUNTERH_START: u16 = 0xB83;
     pub(super) const MHPMCOUNTERH_END: u16 = 0xB9F;
+
+    // Unprivileged Counters/Timers (read-only shadows of Machine-mode versions)
+    pub(super) const CYCLE: u16 = 0xC00;
+    pub(super) const INSTRET: u16 = 0xC02;
+    pub(super) const CYCLEH: u16 = 0xC80;
+    pub(super) const INSTRETH: u16 = 0xC82;
 }
 
+#[derive(PartialEq, PartialOrd)]
 #[bitenum(u2, exhaustive = true)]
 pub(crate) enum PrivLevel {
     User = 0b00,
@@ -248,7 +255,7 @@ pub(crate) struct MstatusLowFields {
     vs: u2,
 
     #[bits(11..=12, rw)]
-    mpp: u2,
+    mpp: PrivLevel,
 
     #[bits(13..=14, rw)]
     fs: u2,
@@ -590,7 +597,8 @@ impl Cpu {
             .with_f(tmp_ext.f() && self.extensions.f())
             .with_d(tmp_ext.d() && tmp_ext.f() && self.extensions.d() && self.extensions.f())
             .with_u(tmp_ext.u() && self.extensions.s())
-            .with_s(tmp_ext.s() && tmp_ext.u() && self.extensions.s());
+            .with_s(tmp_ext.s() && tmp_ext.u() && self.extensions.s())
+            .with_c(tmp_ext.c() && self.extensions.c());
 
         // Finally write back the updated extensions
         match self.xlen() {
@@ -646,9 +654,9 @@ impl Cpu {
         }
     }
 
-    fn mstatus_write_raw(&mut self, val: u64) {
-        // TODO: For now, simply write bits as is but handle little details later
-        match self.xlen() {
+    fn mstatus_write_raw(&mut self, _val: u64) {
+        // TODO: For now, just make read-only
+        /*match self.xlen() {
             BaseIsa::RV32I => {
                 let mstatus32l = Mstatus32L::new_with_raw_value(val as u32);
                 self.reg.csr.mstatus = self.reg.csr.mstatus.with_mstatus32l(mstatus32l);
@@ -657,23 +665,33 @@ impl Cpu {
                 let mstatus64 = Mstatus64::new_with_raw_value(val);
                 self.reg.csr.mstatus = self.reg.csr.mstatus.with_mstatus64(mstatus64);
             }
-        }
+        }*/
     }
 
-    fn mstatush_write_raw(&mut self, val: u64) {
-        // TODO: For now, simply write bits as-is but handle little details later
-        let mstatus32h = Mstatus32H::new_with_raw_value(val as u32);
-        self.reg.csr.mstatus = self.reg.csr.mstatus.with_mstatus32h(mstatus32h);
+    fn mstatush_write_raw(&mut self, _val: u64) {
+        // TODO: For now, just make read-only
+        /*let mstatus32h = Mstatus32H::new_with_raw_value(val as u32);
+        self.reg.csr.mstatus = self.reg.csr.mstatus.with_mstatus32h(mstatus32h);*/
     }
 
     fn mstatus_reset(&mut self) {
+        let lf = MstatusLowFields::default().with_mpp(PrivLevel::Machine);
         let mut mstatus = Mstatus::default();
 
-        if self.xlen() == BaseIsa::RV64I && self.ext_supported(Extension::S) {
-            let mstatus64 = Mstatus64::default()
-                .with_sxl(Mxl::Xlen64)
-                .with_uxl(Mxl::Xlen64);
-            mstatus = mstatus.with_mstatus64(mstatus64);
+        match self.xlen() {
+            BaseIsa::RV32I => {
+                let mstatus32 = Mstatus32L::default().with_low_fields(lf);
+                mstatus = mstatus.with_mstatus32l(mstatus32);
+            }
+            BaseIsa::RV64I => {
+                let mut mstatus64 = Mstatus64::default().with_low_fields(lf);
+
+                if self.ext_supported(Extension::S) {
+                    mstatus64 = mstatus64.with_sxl(Mxl::Xlen64).with_uxl(Mxl::Xlen64);
+                }
+
+                mstatus = mstatus.with_mstatus64(mstatus64);
+            }
         }
 
         self.reg.csr.mstatus = mstatus;
@@ -684,10 +702,8 @@ impl Cpu {
         let base = mtvec.base();
         let mode = mtvec.mode();
 
-        // Base must be 4-byte aligned, otherwise disregard write since WARL field
-        if base.value() % 4 == 0 {
-            self.reg.csr.mtvec = self.reg.csr.mtvec.with_base(base);
-        }
+        // Update base
+        self.reg.csr.mtvec = self.reg.csr.mtvec.with_base(base);
 
         // Disregard mode if not valid (WARL field)
         if let Ok(mode) = mode {
@@ -831,7 +847,7 @@ impl Cpu {
 
     fn csr_has_priv(&self, addr: CsrAddr) -> bool {
         if let Ok(mode) = PrivMode::try_from(addr.priv_lvl()) {
-            mode == self.priv_mode
+            mode <= self.priv_mode
         } else {
             // If here, priv lvl in address is reserved, but will be handled by caller
             true
@@ -893,6 +909,7 @@ impl Cpu {
             }
             csr_addr::MIP => self.reg.csr.mip.raw_value(),
             csr_addr::MIE => self.reg.csr.mie.raw_value(),
+
             csr_addr::MCYCLE => self.reg.csr.mcycle.raw_value(),
             csr_addr::MCYCLEH if self.xlen() == BaseIsa::RV32I => {
                 self.reg.csr.mcycle.mcycleh().value() as u64
@@ -901,6 +918,17 @@ impl Cpu {
             csr_addr::MINSTRETH if self.xlen() == BaseIsa::RV32I => {
                 self.reg.csr.minstret.minstreth().value() as u64
             }
+
+            // TODO: Check mcounteren and priv levels before reading
+            csr_addr::CYCLE => self.reg.csr.mcycle.raw_value(),
+            csr_addr::CYCLEH if self.xlen() == BaseIsa::RV32I => {
+                self.reg.csr.mcycle.mcycleh().value() as u64
+            }
+            csr_addr::INSTRET => self.reg.csr.minstret.raw_value(),
+            csr_addr::INSTRETH if self.xlen() == BaseIsa::RV32I => {
+                self.reg.csr.minstret.minstreth().value() as u64
+            }
+
             csr_addr::MCOUNTEREN if self.ext_supported(Extension::S) => {
                 self.reg.csr.mcounteren.raw_value() as u64
             }
