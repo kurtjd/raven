@@ -27,14 +27,14 @@ TBD
 - ~~Implement RV32I~~
 - ~~Implement RV64I~~
 - Implement "M" extension
-- Implement "Zicsr" extension
+- ~~Implement "Zicsr" extension~~
 - Implement "F" extension
 - Implement "D" extension
 - Implement "A" extension
-- Implement "Zifencei" extension
+- ~~Implement "Zifencei" extension~~
 - Implement "C" extension
-- Implement machine-mode privileged ISA and CSRs
-- Implement machine-mode exception/trap handling
+- ~~Implement machine-mode privileged ISA and CSRs~~
+- ~~Implement machine-mode exception/trap handling~~
 - Implement "S" extension
 - Implement supervisor-mode privileged ISA and CSRs
 - Implement supervisor-mode exception/trap handling
