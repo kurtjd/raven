@@ -67,6 +67,21 @@ pub(crate) mod funct10 {
     pub(crate) const SLLW: u16 = 0b0000000_001;
     pub(crate) const SRLW: u16 = 0b0000000_101;
     pub(crate) const SRAW: u16 = 0b0100000_101;
+
+    // M extension
+    pub(crate) const MUL: u16 = 0b0000001_000;
+    pub(crate) const MULH: u16 = 0b0000001_001;
+    pub(crate) const MULHSU: u16 = 0b0000001_010;
+    pub(crate) const MULHU: u16 = 0b0000001_011;
+    pub(crate) const DIV: u16 = 0b0000001_100;
+    pub(crate) const DIVU: u16 = 0b0000001_101;
+    pub(crate) const REM: u16 = 0b0000001_110;
+    pub(crate) const REMU: u16 = 0b0000001_111;
+    pub(crate) const MULW: u16 = 0b0000001_000;
+    pub(crate) const DIVW: u16 = 0b0000001_100;
+    pub(crate) const DIVUW: u16 = 0b0000001_101;
+    pub(crate) const REMW: u16 = 0b0000001_110;
+    pub(crate) const REMUW: u16 = 0b0000001_111;
 }
 
 #[allow(clippy::unusual_byte_groupings)]

@@ -79,9 +79,9 @@ impl Cpu {
         let base = u64::from(self.reg.csr.mtvec.base()) << 2;
         self.write_pc_next(base);
 
-        /*println!("TRAP: {:?}", trap);
+        println!("TRAP: {:?}", trap);
         println!("PC: 0x{:X}", self.read_pc());
-        println!("Next PC: 0x{:X}", self.read_pc_next());*/
+        println!("Next PC: 0x{:X}", self.read_pc_next());
     }
 
     pub(crate) fn _interrupt(&mut self, interrupt: _Interrupt) {

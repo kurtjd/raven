@@ -439,6 +439,101 @@ impl Cpu {
                 self.write_gpr(rd, res);
             }
 
+            funct10::MUL if self.ext_supported(Extension::M) => {
+                let res = rs1_val.wrapping_mul(rs2_val);
+                self.write_gpr(rd, res);
+            }
+
+            funct10::MULH if self.ext_supported(Extension::M) => {
+                let res = match self.xlen() {
+                    BaseIsa::RV32I => {
+                        let prod = ((rs1_val as i32) as i64).wrapping_mul((rs2_val as i32) as i64);
+                        (prod >> 32) as u64
+                    }
+                    BaseIsa::RV64I => {
+                        let prod =
+                            ((rs1_val as i64) as i128).wrapping_mul((rs2_val as i64) as i128);
+                        (prod >> 64) as u64
+                    }
+                };
+
+                self.write_gpr(rd, res);
+            }
+
+            funct10::MULHSU if self.ext_supported(Extension::M) => {
+                let res = match self.xlen() {
+                    BaseIsa::RV32I => {
+                        let prod = ((rs1_val as i32) as i64).wrapping_mul(rs2_val as i64);
+                        (prod >> 32) as u64
+                    }
+                    BaseIsa::RV64I => {
+                        let prod = ((rs1_val as i64) as i128).wrapping_mul(rs2_val as i128);
+                        (prod >> 64) as u64
+                    }
+                };
+
+                self.write_gpr(rd, res);
+            }
+
+            funct10::MULHU if self.ext_supported(Extension::M) => {
+                let res = (rs1_val as u128).wrapping_mul(rs2_val as u128);
+                let res = match self.xlen() {
+                    BaseIsa::RV32I => (res >> 32) as u64,
+                    BaseIsa::RV64I => (res >> 64) as u64,
+                };
+                self.write_gpr(rd, res);
+            }
+
+            funct10::DIV if self.ext_supported(Extension::M) => {
+                let res = if rs2_val != 0 {
+                    match self.xlen() {
+                        BaseIsa::RV32I => (rs1_val as i32).wrapping_div(rs2_val as i32) as u64,
+                        BaseIsa::RV64I => (rs1_val as i64).wrapping_div(rs2_val as i64) as u64,
+                    }
+                } else {
+                    // Divde by zero semantics state quotient should have all bits set
+                    u64::MAX
+                };
+
+                self.write_gpr(rd, res);
+            }
+
+            funct10::DIVU if self.ext_supported(Extension::M) => {
+                let res = if rs2_val != 0 {
+                    rs1_val / rs2_val
+                } else {
+                    // Divde by zero semantics state quotient should have all bits set
+                    u64::MAX
+                };
+
+                self.write_gpr(rd, res);
+            }
+
+            funct10::REMU if self.ext_supported(Extension::M) => {
+                let res = if rs2_val != 0 {
+                    rs1_val % rs2_val
+                } else {
+                    // Divide by zero semantics state remainder should equal dividend
+                    rs1_val
+                };
+
+                self.write_gpr(rd, res);
+            }
+
+            funct10::REM if self.ext_supported(Extension::M) => {
+                let res = if rs2_val != 0 {
+                    match self.xlen() {
+                        BaseIsa::RV32I => ((rs1_val as i32).wrapping_rem(rs2_val as i32)) as u64,
+                        BaseIsa::RV64I => ((rs1_val as i64).wrapping_rem(rs2_val as i64)) as u64,
+                    }
+                } else {
+                    // Divide by zero semantics state remainder should equal dividend
+                    rs1_val
+                };
+
+                self.write_gpr(rd, res);
+            }
+
             _ => self.trap(Trap::IllegalInstruction),
         }
     }
@@ -489,6 +584,55 @@ impl Cpu {
 
             funct10::SRAW => {
                 let res = sign_ext_w!((rs1_val as i32) >> shamt);
+                self.write_gpr(rd, res);
+            }
+
+            funct10::MULW if self.ext_supported(Extension::M) => {
+                let res = sign_ext_w!(rs1_val.wrapping_mul(rs2_val) as u32);
+                self.write_gpr(rd, res);
+            }
+
+            funct10::DIVUW if self.ext_supported(Extension::M) => {
+                let res = if rs2_val != 0 {
+                    sign_ext_w!((rs1_val as u32) / (rs2_val as u32))
+                } else {
+                    // Divde by zero semantics state quotient should have all bits set
+                    u64::MAX
+                };
+
+                self.write_gpr(rd, res);
+            }
+
+            funct10::DIVW if self.ext_supported(Extension::M) => {
+                let res = if rs2_val != 0 {
+                    sign_ext_w!((rs1_val as i32).wrapping_div(rs2_val as i32))
+                } else {
+                    // Divde by zero semantics state quotient should have all bits set
+                    u64::MAX
+                };
+
+                self.write_gpr(rd, res);
+            }
+
+            funct10::REMUW if self.ext_supported(Extension::M) => {
+                let res = if rs2_val != 0 {
+                    sign_ext_w!((rs1_val as u32) % (rs2_val as u32))
+                } else {
+                    // Divide by zero semantics state remainder should equal dividend
+                    rs1_val
+                };
+
+                self.write_gpr(rd, res);
+            }
+
+            funct10::REMW if self.ext_supported(Extension::M) => {
+                let res = if rs2_val != 0 {
+                    sign_ext_w!((rs1_val as i32).wrapping_rem(rs2_val as i32))
+                } else {
+                    // Divide by zero semantics state remainder should equal dividend
+                    rs1_val
+                };
+
                 self.write_gpr(rd, res);
             }
 

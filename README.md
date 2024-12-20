@@ -26,11 +26,11 @@ TBD
 ## TODO
 - ~~Implement RV32I~~
 - ~~Implement RV64I~~
-- Implement "M" extension
-- ~~Implement "Zicsr" extension~~
+- ~~Implement "M" extension~~
+- Implement "A" extension
 - Implement "F" extension
 - Implement "D" extension
-- Implement "A" extension
+- ~~Implement "Zicsr" extension~~
 - ~~Implement "Zifencei" extension~~
 - Implement "C" extension
 - ~~Implement machine-mode privileged ISA and CSRs~~
