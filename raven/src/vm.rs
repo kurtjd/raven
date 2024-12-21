@@ -27,7 +27,7 @@ struct MemoryController {
 impl MemoryController {
     fn new(memsz: usize) -> Self {
         Self {
-            ram: Vec::with_capacity(memsz),
+            ram: vec![0; memsz],
             memsz,
         }
     }
@@ -195,7 +195,8 @@ impl MemoryAccess for MemoryController {
     }
 
     fn clear(&mut self) {
-        self.ram.clear();
+        //self.ram.clear();
+        self.ram = vec![0; self.memsz];
     }
 }
 
@@ -231,8 +232,13 @@ impl VirtualMachine {
         let mut bin = File::open(path)?;
         let binsz = bin.metadata()?.len() as usize;
 
-        if binsz <= self.mc.ram.capacity() {
-            bin.read_to_end(&mut self.mc.ram)?;
+        if binsz <= self.mc.memsz {
+            // Read to end appends, so need to create temporary empty buffer
+            let mut buf = Vec::new();
+            bin.read_to_end(&mut buf)?;
+
+            // Then we can copy tmp buffer over to RAM
+            self.mc.ram[..buf.len()].copy_from_slice(&buf);
             Ok(())
         } else {
             Err(io::ErrorKind::InvalidInput.into())

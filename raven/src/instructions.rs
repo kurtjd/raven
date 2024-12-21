@@ -69,6 +69,7 @@ pub(crate) mod funct10 {
     pub(crate) const SRAW: u16 = 0b0100000_101;
 
     // M extension
+    // RV32
     pub(crate) const MUL: u16 = 0b0000001_000;
     pub(crate) const MULH: u16 = 0b0000001_001;
     pub(crate) const MULHSU: u16 = 0b0000001_010;
@@ -77,6 +78,8 @@ pub(crate) mod funct10 {
     pub(crate) const DIVU: u16 = 0b0000001_101;
     pub(crate) const REM: u16 = 0b0000001_110;
     pub(crate) const REMU: u16 = 0b0000001_111;
+
+    // RV64
     pub(crate) const MULW: u16 = 0b0000001_000;
     pub(crate) const DIVW: u16 = 0b0000001_100;
     pub(crate) const DIVUW: u16 = 0b0000001_101;
@@ -95,6 +98,36 @@ pub(crate) mod shopt {
     pub(crate) const SLLIW: u16 = 0b0000000_001;
     pub(crate) const SRLIW: u16 = 0b0000000_101;
     pub(crate) const SRAIW: u16 = 0b0100000_101;
+}
+
+// A extension
+#[allow(clippy::unusual_byte_groupings)]
+pub(crate) mod amo {
+    // RV32
+    pub(crate) const LRW: u8 = 0b00010_010;
+    pub(crate) const SCW: u8 = 0b00011_010;
+    pub(crate) const AMOSWAPW: u8 = 0b00001_010;
+    pub(crate) const AMOADDW: u8 = 0b00000_010;
+    pub(crate) const AMOXORW: u8 = 0b00100_010;
+    pub(crate) const AMOANDW: u8 = 0b01100_010;
+    pub(crate) const AMOORW: u8 = 0b01000_010;
+    pub(crate) const AMOMINW: u8 = 0b10000_010;
+    pub(crate) const AMOMAXW: u8 = 0b10100_010;
+    pub(crate) const AMOMINUW: u8 = 0b11000_010;
+    pub(crate) const AMOMAXUW: u8 = 0b11100_010;
+
+    // RV64
+    pub(crate) const LRD: u8 = 0b00010_011;
+    pub(crate) const SCD: u8 = 0b00011_011;
+    pub(crate) const AMOSWAPD: u8 = 0b00001_011;
+    pub(crate) const AMOADDD: u8 = 0b00000_011;
+    pub(crate) const AMOXORD: u8 = 0b00100_011;
+    pub(crate) const AMOANDD: u8 = 0b01100_011;
+    pub(crate) const AMOORD: u8 = 0b01000_011;
+    pub(crate) const AMOMIND: u8 = 0b10000_011;
+    pub(crate) const AMOMAXD: u8 = 0b10100_011;
+    pub(crate) const AMOMINUD: u8 = 0b11000_011;
+    pub(crate) const AMOMAXUD: u8 = 0b11100_011;
 }
 
 pub(crate) mod funct12 {
@@ -194,6 +227,10 @@ pub(crate) struct InstrFormatR {
     // Not an actual field, but useful for creating single unique funct ID
     #[bits([12..=14, 25..=31], r)]
     funct10: u10,
+
+    // For identifying atomics
+    #[bits([12..=14, 27..=31], r)]
+    amo: u8,
 }
 
 #[bitfield(u32)]

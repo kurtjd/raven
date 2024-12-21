@@ -115,11 +115,24 @@ impl TryFrom<PrivLevel> for PrivMode {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct ReserveSet {
+    pub(crate) addr: u64,
+    pub(crate) dword: u64,
+}
+
+impl ReserveSet {
+    pub(crate) fn new(addr: u64, word: u64) -> Self {
+        Self { addr, dword: word }
+    }
+}
+
 pub struct Cpu {
     pub(crate) base_isa: BaseIsa,
     pub(crate) extensions: Extensions,
     pub(crate) reg: Registers,
     pub(crate) priv_mode: PrivMode,
+    pub(crate) reserve_set: Option<ReserveSet>,
     pub halted: bool,
     reset_addr: u64,
 }
@@ -322,6 +335,7 @@ impl Cpu {
             base_isa: BaseIsa::RV32I,
             extensions: Extensions::default(),
             priv_mode: PrivMode::Machine,
+            reserve_set: None,
             reset_addr,
             halted: false,
         };
@@ -335,6 +349,7 @@ impl Cpu {
     pub fn reset(&mut self) {
         self.halted = false;
         self.priv_mode = PrivMode::Machine;
+        self.reserve_set = None;
         self.reg = Registers::default();
         self.reg.pc = self.reset_addr;
         self.reset_csr();

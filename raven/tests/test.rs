@@ -41,3 +41,13 @@ fn test_32um(#[files("tests/bin/rv32um-p-*")] path: PathBuf) {
 fn test_64um(#[files("tests/bin/rv64um-p-*")] path: PathBuf) {
     op_test("RV64IM_Zicsr", &path);
 }
+
+#[rstest]
+fn test_32ua(#[files("tests/bin/rv32ua-p-*")] path: PathBuf) {
+    op_test("RV32IA_Zicsr", &path);
+}
+
+#[rstest]
+fn test_64ua(#[files("tests/bin/rv64ua-p-*")] path: PathBuf) {
+    op_test("RV64IA_Zicsr", &path);
+}

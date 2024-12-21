@@ -1,3 +1,5 @@
+use arbitrary_int::Number;
+
 use crate::cpu::*;
 use crate::exceptions::Trap;
 use crate::instructions::*;
@@ -11,6 +13,49 @@ macro_rules! nop {
 }
 
 impl Cpu {
+    /* Just for DRY purposes, since there are quite a few AMO instructions
+     * that only differ by the op they perform, which is passed in via closure.
+     */
+    fn amow<F>(&mut self, src: u64, rd: u8, addr: u64, memory: &mut impl MemoryAccess, op: F)
+    where
+        F: FnOnce(u32, u32) -> u32,
+    {
+        if addr % 4 == 0 {
+            match self.loadw(memory, addr) {
+                Ok(w) => {
+                    let res = op(src as u32, w);
+                    match self.storew(memory, addr, res) {
+                        Ok(_) => self.write_gpr(rd, sign_ext_w!(w)),
+                        Err(_) => self.trap(Trap::StoreAccessFault),
+                    }
+                }
+                Err(_) => self.trap(Trap::LoadAccessFault),
+            }
+        } else {
+            self.trap(Trap::LoadAddressMisaligned);
+        }
+    }
+
+    fn amod<F>(&mut self, src: u64, rd: u8, addr: u64, memory: &mut impl MemoryAccess, op: F)
+    where
+        F: FnOnce(u64, u64) -> u64,
+    {
+        if addr % 4 == 0 {
+            match self.loadd(memory, addr) {
+                Ok(w) => {
+                    let res = op(src, w);
+                    match self.stored(memory, addr, res) {
+                        Ok(_) => self.write_gpr(rd, w),
+                        Err(_) => self.trap(Trap::StoreAccessFault),
+                    }
+                }
+                Err(_) => self.trap(Trap::LoadAccessFault),
+            }
+        } else {
+            self.trap(Trap::LoadAddressMisaligned);
+        }
+    }
+
     pub(crate) fn handle_instr(&mut self, instr: Instruction, memory: &mut impl MemoryAccess) {
         self.write_pc_next_add(4);
 
@@ -364,8 +409,164 @@ impl Cpu {
         todo!();
     }
 
-    pub(crate) fn handle_amo(&mut self, _instr: Instruction, _memory: &mut impl MemoryAccess) {
-        todo!();
+    pub(crate) fn handle_amo(&mut self, instr: Instruction, memory: &mut impl MemoryAccess) {
+        if !self.ext_supported(Extension::A) {
+            self.trap(Trap::IllegalInstruction);
+            return;
+        }
+
+        let instr = InstrFormatR::new_with_raw_value(instr.raw_value());
+        let rd = instr.rd().value();
+        let rs1 = instr.rs1().value();
+        let addr = self.read_gpr(rs1);
+        let rs2 = instr.rs2().value();
+        let src = self.read_gpr(rs2);
+        let amo = instr.amo().value();
+
+        /* Because raven naturally uses a sequentially consistent load/store model,
+         * the aq and rl bits in these instructions are ignored. If support for multiple
+         * harts are added (and these are implemented via threads) may need to revisit and
+         * consider these more.
+         */
+        match amo {
+            amo::LRW => match self.loadw(memory, addr) {
+                Ok(w) => {
+                    self.write_gpr(rd, sign_ext_w!(w));
+                    self.reserve_set = Some(ReserveSet::new(addr, w as u64));
+                }
+                Err(_) => self.trap(Trap::LoadAccessFault),
+            },
+
+            amo::SCW => match self.reserve_set {
+                Some(rs) => {
+                    // Load the current word in memory at addr
+                    let word = match self.loadw(memory, addr) {
+                        Ok(w) => w as u64,
+
+                        // Shouldn't ever happen?
+                        Err(_) => {
+                            self.trap(Trap::LoadAccessFault);
+                            return;
+                        }
+                    };
+
+                    /* Now we need to ensure that the requested address is the same as in the
+                     * reservation set (since the SC must be paired with the most recent LR)
+                     * and that the word located there hasn't been modified since the LR call.
+                     * If all okay, only then store the src value into memory.
+                     */
+                    if rs.addr == addr && rs.dword == word {
+                        match self.storew(memory, addr, src as u32) {
+                            Ok(()) => {
+                                self.write_gpr(rd, 0);
+
+                                // Invalidate this reservation set
+                                self.reserve_set = None;
+                            }
+                            Err(_) => self.trap(Trap::StoreAccessFault),
+                        }
+                    }
+                }
+
+                // An LR has not been called for this SC
+                None => {
+                    self.write_gpr(rd, 1);
+                }
+            },
+
+            amo::LRD => match self.loadd(memory, addr) {
+                Ok(dw) => {
+                    self.write_gpr(rd, dw);
+                    self.reserve_set = Some(ReserveSet::new(addr, dw));
+                }
+                Err(_) => self.trap(Trap::LoadAccessFault),
+            },
+
+            amo::SCD => match self.reserve_set {
+                Some(rs) => {
+                    // Load the current double-word in memory at addr
+                    let dword = match self.loadd(memory, addr) {
+                        Ok(dw) => dw,
+
+                        // Shouldn't ever happen?
+                        Err(_) => {
+                            self.trap(Trap::LoadAccessFault);
+                            return;
+                        }
+                    };
+
+                    /* Now we need to ensure that the requested address is the same as in the
+                     * reservation set (since the SC must be paired with the most recent LR)
+                     * and that the dword located there hasn't been modified since the LR call.
+                     * If all okay, only then store the src value into memory.
+                     */
+                    if rs.addr == addr && rs.dword == dword {
+                        match self.stored(memory, addr, src) {
+                            Ok(()) => {
+                                self.write_gpr(rd, 0);
+
+                                // Invalidate this reservation set
+                                self.reserve_set = None;
+                            }
+                            Err(_) => self.trap(Trap::StoreAccessFault),
+                        }
+                    }
+                }
+
+                // An LR has not been called for this SC
+                None => {
+                    self.write_gpr(rd, 1);
+                }
+            },
+
+            amo::AMOSWAPW => self.amow(src, rd, addr, memory, |src, _| src),
+            amo::AMOADDW => self.amow(src, rd, addr, memory, |src, w| src.wrapping_add(w)),
+            amo::AMOANDW => self.amow(src, rd, addr, memory, |src, w| src & w),
+            amo::AMOORW => self.amow(src, rd, addr, memory, |src, w| src | w),
+            amo::AMOXORW => self.amow(src, rd, addr, memory, |src, w| src ^ w),
+            amo::AMOMAXUW => self.amow(src, rd, addr, memory, std::cmp::max),
+            amo::AMOMAXW => self.amow(src, rd, addr, memory, |src, w| {
+                std::cmp::max(src as i32, w as i32) as u32
+            }),
+            amo::AMOMINUW => self.amow(src, rd, addr, memory, std::cmp::min),
+            amo::AMOMINW => self.amow(src, rd, addr, memory, |src, w| {
+                std::cmp::min(src as i32, w as i32) as u32
+            }),
+
+            amo::AMOSWAPD if self.xlen() == BaseIsa::RV64I => {
+                self.amod(src, rd, addr, memory, |src, _| src)
+            }
+            amo::AMOADDD if self.xlen() == BaseIsa::RV64I => {
+                self.amod(src, rd, addr, memory, |src, w| src.wrapping_add(w))
+            }
+            amo::AMOANDD if self.xlen() == BaseIsa::RV64I => {
+                self.amod(src, rd, addr, memory, |src, w| src & w)
+            }
+            amo::AMOORD if self.xlen() == BaseIsa::RV64I => {
+                self.amod(src, rd, addr, memory, |src, w| src | w)
+            }
+            amo::AMOXORD if self.xlen() == BaseIsa::RV64I => {
+                self.amod(src, rd, addr, memory, |src, w| src ^ w)
+            }
+            amo::AMOMAXUD if self.xlen() == BaseIsa::RV64I => {
+                self.amod(src, rd, addr, memory, std::cmp::max)
+            }
+            amo::AMOMAXD if self.xlen() == BaseIsa::RV64I => {
+                self.amod(src, rd, addr, memory, |src, w| {
+                    std::cmp::max(src as i64, w as i64) as u64
+                })
+            }
+            amo::AMOMINUD if self.xlen() == BaseIsa::RV64I => {
+                self.amod(src, rd, addr, memory, std::cmp::min)
+            }
+            amo::AMOMIND if self.xlen() == BaseIsa::RV64I => {
+                self.amod(src, rd, addr, memory, |src, w| {
+                    std::cmp::min(src as i64, w as i64) as u64
+                })
+            }
+
+            _ => self.trap(Trap::IllegalInstruction),
+        }
     }
 
     pub(crate) fn handle_op(&mut self, instr: Instruction) {
