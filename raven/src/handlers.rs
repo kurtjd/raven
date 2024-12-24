@@ -1,4 +1,5 @@
-use arbitrary_int::Number;
+use arbitrary_int::*;
+use softfloat_wrapper::{ExceptionFlags, Float, F32};
 
 use crate::cpu::*;
 use crate::exceptions::Trap;
@@ -40,7 +41,7 @@ impl Cpu {
     where
         F: FnOnce(u64, u64) -> u64,
     {
-        if addr % 4 == 0 {
+        if addr % 8 == 0 {
             match self.loadd(memory, addr) {
                 Ok(w) => {
                     let res = op(src, w);
@@ -54,6 +55,19 @@ impl Cpu {
         } else {
             self.trap(Trap::LoadAddressMisaligned);
         }
+    }
+
+    fn update_fflags(&mut self, fflags: &mut ExceptionFlags) {
+        fflags.get();
+        self.reg.csr.fcsr = self
+            .reg
+            .csr
+            .fcsr
+            .with_nx(fflags.is_inexact())
+            .with_uf(fflags.is_underflow())
+            .with_of(fflags.is_overflow())
+            .with_dz(fflags.is_infinite())
+            .with_nv(fflags.is_invalid());
     }
 
     pub(crate) fn handle_instr(&mut self, instr: Instruction, memory: &mut impl MemoryAccess) {
@@ -76,10 +90,10 @@ impl Cpu {
             MajorGroup::Lui => self.handle_lui(instr),
             MajorGroup::Op32 => self.handle_op_32(instr),
             MajorGroup::B64 => self.handle_b64(instr),
-            MajorGroup::MAdd => self.handle_madd(instr),
-            MajorGroup::MSub => self.handle_msub(instr),
-            MajorGroup::NMSub => self.handle_nmsub(instr),
-            MajorGroup::NMAdd => self.handle_nmadd(instr),
+            MajorGroup::MAdd => self.handle_ffused(instr),
+            MajorGroup::MSub => self.handle_ffused(instr),
+            MajorGroup::NMSub => self.handle_ffused(instr),
+            MajorGroup::NMAdd => self.handle_ffused(instr),
             MajorGroup::OpFP => self.handle_op_fp(instr),
             MajorGroup::OpV => self.handle_op_v(instr),
             MajorGroup::Custom2 => self.handle_custom_2(instr),
@@ -199,8 +213,37 @@ impl Cpu {
         }
     }
 
-    pub(crate) fn handle_load_fp(&mut self, _instr: Instruction, _memory: &impl MemoryAccess) {
-        todo!();
+    pub(crate) fn handle_load_fp(&mut self, instr: Instruction, memory: &impl MemoryAccess) {
+        if !self.ext_supported(Extension::F) {
+            self.trap(Trap::IllegalInstruction);
+            return;
+        }
+
+        let instr = InstrFormatI::new_with_raw_value(instr.raw_value());
+        let funct3 = instr.funct3().value();
+        let rd = instr.rd().value();
+        let rs = instr.rs1().value();
+        let imm = self.expand_imm_i(instr.imm().value());
+
+        // Need to account for the fact that RV32I is limited to 32-bit addr space
+        let mut addr = self.read_gpr(rs).wrapping_add(imm);
+        if matches!(self.xlen(), BaseIsa::RV32I) {
+            addr &= 0xFFFF_FFFF;
+        }
+
+        match funct3 {
+            funct3::FLW => {
+                let val = match self.loadw(memory, addr) {
+                    Ok(w) => sign_ext_w!(w),
+                    Err(_) => {
+                        self.trap(Trap::LoadAccessFault);
+                        return;
+                    }
+                };
+                self.write_fpr(rd, val, false);
+            }
+            _ => self.trap(Trap::IllegalInstruction),
+        }
     }
 
     pub(crate) fn handle_custom_0(&mut self, instr: Instruction) {
@@ -401,8 +444,33 @@ impl Cpu {
         }
     }
 
-    pub(crate) fn handle_store_fp(&mut self, _instr: Instruction, _memory: &mut impl MemoryAccess) {
-        todo!();
+    pub(crate) fn handle_store_fp(&mut self, instr: Instruction, memory: &mut impl MemoryAccess) {
+        if !self.ext_supported(Extension::F) {
+            self.trap(Trap::IllegalInstruction);
+            return;
+        }
+
+        let instr = InstrFormatS::new_with_raw_value(instr.raw_value());
+        let funct3 = instr.funct3().value();
+        let rs1 = instr.rs1().value();
+        let rs2 = instr.rs2().value();
+        let rs2_val = self.read_fpr(rs2, false);
+        let imm = self.expand_imm_s(instr.imm().value());
+
+        // Need to account for the fact that RV32I is limited to 32-bit addr space
+        let mut addr = self.read_gpr(rs1).wrapping_add(imm);
+        if self.xlen() == BaseIsa::RV32I {
+            addr &= 0xFFFF_FFFF;
+        }
+
+        match funct3 {
+            funct3::FSW => match self.storew(memory, addr, rs2_val as u32) {
+                Ok(()) => (),
+                Err(_) => self.trap(Trap::StoreAccessFault),
+            },
+
+            _ => self.trap(Trap::IllegalInstruction),
+        }
     }
 
     pub(crate) fn handle_custom_1(&mut self, _instr: Instruction) {
@@ -845,24 +913,266 @@ impl Cpu {
         todo!();
     }
 
-    pub(crate) fn handle_madd(&mut self, _instr: Instruction) {
-        todo!();
+    pub(crate) fn handle_ffused(&mut self, instr: Instruction) {
+        if !self.ext_supported(Extension::F) {
+            self.trap(Trap::IllegalInstruction);
+            return;
+        }
+
+        let instr = InstrFormatR4::new_with_raw_value(instr.raw_value());
+        let opcode = instr.opcode().major();
+        let rd = instr.rd().value();
+        let rs1 = instr.rs1().value();
+        let rs2 = instr.rs2().value();
+        let rs3 = instr.rs3().value();
+
+        // Floating-point specific
+        let fmt = instr.fmt();
+        let frm = match instr.frm() {
+            Frm::Dyn => self.reg.csr.fcsr.frm(),
+            _ => instr.frm(),
+        };
+        let fprs1_val = self.read_fpr(rs1, false);
+        let fprs2_val = self.read_fpr(rs2, false);
+        let fprs3_val = self.read_fpr(rs3, false);
+        let f1 = F32::from_bits(fprs1_val as u32);
+        let f2 = F32::from_bits(fprs2_val as u32);
+        let f3 = F32::from_bits(fprs3_val as u32);
+
+        // Updated by softfloat floating point operations
+        let mut fflags = ExceptionFlags::default();
+        fflags.set();
+
+        let res = match (opcode, fmt) {
+            (MajorGroup::MAdd, FFmt::Single) => {
+                f1.mul(f2, frm.into()).add(f3, frm.into()).to_bits()
+            }
+            (MajorGroup::NMAdd, FFmt::Single) => {
+                f1.mul(f2, frm.into()).neg().sub(f3, frm.into()).to_bits()
+            }
+            (MajorGroup::MSub, FFmt::Single) => {
+                f1.mul(f2, frm.into()).sub(f3, frm.into()).to_bits()
+            }
+            (MajorGroup::NMSub, FFmt::Single) => {
+                f1.mul(f2, frm.into()).neg().add(f3, frm.into()).to_bits()
+            }
+            _ => {
+                self.trap(Trap::IllegalInstruction);
+                return;
+            }
+        };
+
+        self.update_fflags(&mut fflags);
+        self.write_fpr(rd, res as u64, false);
     }
 
-    pub(crate) fn handle_msub(&mut self, _instr: Instruction) {
-        todo!();
-    }
+    pub(crate) fn handle_op_fp(&mut self, instr: Instruction) {
+        if !self.ext_supported(Extension::F) {
+            self.trap(Trap::IllegalInstruction);
+            return;
+        }
 
-    pub(crate) fn handle_nmsub(&mut self, _instr: Instruction) {
-        todo!();
-    }
+        // General/integer regs
+        let instr = InstrFormatR::new_with_raw_value(instr.raw_value());
+        let rd = instr.rd().value();
+        let rs1 = instr.rs1().value();
+        let gprs1_val = self.read_gpr(rs1);
+        let rs2 = instr.rs2().value();
+        let funct7 = instr.funct7().value();
+        let funct10 = instr.funct10().value();
 
-    pub(crate) fn handle_nmadd(&mut self, _instr: Instruction) {
-        todo!();
-    }
+        // Floating-point specific
+        const SIGN: u64 = 1 << 31;
+        let frm = match instr.frm() {
+            Frm::Dyn => self.reg.csr.fcsr.frm(),
+            _ => instr.frm(),
+        };
+        let fprs1_val = self.read_fpr(rs1, false);
+        let fprs2_val = self.read_fpr(rs2, false);
+        let f1 = F32::from_bits(fprs1_val as u32);
+        let f2 = F32::from_bits(fprs2_val as u32);
 
-    pub(crate) fn handle_op_fp(&mut self, _instr: Instruction) {
-        todo!();
+        // Updated by softfloat floating point operations
+        let mut fflags = ExceptionFlags::default();
+        fflags.set();
+
+        match funct7 {
+            funct7::FADDS => {
+                let res = f1.add(f2, frm.into()).to_bits();
+                self.update_fflags(&mut fflags);
+                self.write_fpr(rd, res as u64, false);
+            }
+
+            funct7::FSUBS => {
+                let res = f1.sub(f2, frm.into()).to_bits();
+                self.update_fflags(&mut fflags);
+                self.write_fpr(rd, res as u64, false);
+            }
+
+            funct7::FMULS => {
+                let res = f1.mul(f2, frm.into()).to_bits();
+                self.update_fflags(&mut fflags);
+                self.write_fpr(rd, res as u64, false);
+            }
+
+            funct7::FDIVS => {
+                let res = f1.div(f2, frm.into()).to_bits();
+                self.update_fflags(&mut fflags);
+                self.write_fpr(rd, res as u64, false);
+            }
+
+            funct7::FSQRTS => {
+                let res = f1.sqrt(frm.into()).to_bits();
+                self.update_fflags(&mut fflags);
+                self.write_fpr(rd, res as u64, false);
+            }
+
+            funct7::FMINMAXS => {
+                /* RISCV considers -0.0 to be smaller than +0.0 for the purpose of this instruction,
+                 * however the IEEE spec considers them equal, so can't rely completely on
+                 * soft-float's lt compare method.
+                 */
+                let cond = match u8::from(frm.raw_value()) {
+                    // Min
+                    0b000 => (f1.is_negative_zero() && f2.is_positive_zero()) || f1.lt_quiet(f2),
+                    // Max
+                    0b001 => (f1.is_positive_zero() && f2.is_negative_zero()) || f2.lt_quiet(f1),
+                    _ => {
+                        self.trap(Trap::IllegalInstruction);
+                        return;
+                    }
+                };
+                self.update_fflags(&mut fflags);
+
+                // Should return canonical NaN if both args are NaN
+                let res = if f1.is_nan() && f2.is_nan() {
+                    F32::quiet_nan()
+                } else if cond {
+                    f1
+                } else {
+                    f2
+                }
+                .to_bits();
+
+                self.write_fpr(rd, res as u64, false);
+            }
+
+            // Peculiar instruction that uses rs2 field to encode behavior
+            funct7::FCVTIS => match rs2 {
+                // FCVT.W.S
+                0b00000 => {
+                    let res = sign_ext_w!(f1.to_i32(frm.into(), true));
+                    self.update_fflags(&mut fflags);
+                    self.write_gpr(rd, res);
+                }
+
+                // FCVT.WU.S
+                0b00001 => {
+                    let res = sign_ext_w!(f1.to_u32(frm.into(), true));
+                    self.update_fflags(&mut fflags);
+                    self.write_gpr(rd, res);
+                }
+
+                // FCVT.L.S
+                0b00010 if self.xlen() == BaseIsa::RV64I => {
+                    let res = f1.to_i64(frm.into(), true) as u64;
+                    self.update_fflags(&mut fflags);
+                    self.write_gpr(rd, res);
+                }
+
+                // FCVT.LU.S
+                0b00011 if self.xlen() == BaseIsa::RV64I => {
+                    let res = f1.to_u64(frm.into(), true);
+                    self.update_fflags(&mut fflags);
+                    self.write_gpr(rd, res);
+                }
+
+                _ => self.trap(Trap::IllegalInstruction),
+            },
+
+            funct7::FCVTSI => match rs2 {
+                // FCVT.S.W
+                0b00000 => {
+                    let res = F32::from_i32(gprs1_val as i32, frm.into()).to_bits();
+                    self.update_fflags(&mut fflags);
+                    self.write_fpr(rd, res as u64, false);
+                }
+
+                // FCVT.S.WU
+                0b00001 => {
+                    let res = F32::from_u32(gprs1_val as u32, frm.into()).to_bits();
+                    self.update_fflags(&mut fflags);
+                    self.write_fpr(rd, res as u64, false);
+                }
+
+                // FCVT.S.L
+                0b00010 if self.xlen() == BaseIsa::RV64I => {
+                    let res = F32::from_i64(gprs1_val as i64, frm.into()).to_bits();
+                    self.update_fflags(&mut fflags);
+                    self.write_fpr(rd, res as u64, false);
+                }
+
+                // FCVT.S.LU
+                0b00011 if self.xlen() == BaseIsa::RV64I => {
+                    let res = F32::from_u64(gprs1_val, frm.into()).to_bits();
+                    self.update_fflags(&mut fflags);
+                    self.write_fpr(rd, res as u64, false);
+                }
+
+                _ => self.trap(Trap::IllegalInstruction),
+            },
+
+            _ => match funct10 {
+                funct10::FMVXW => self.write_gpr(rd, sign_ext_w!(fprs1_val as u32)),
+                funct10::FMVWX => self.write_fpr(rd, gprs1_val, false),
+
+                funct10::FSGNJS => {
+                    let res = (fprs1_val & !SIGN) | (fprs2_val & SIGN);
+                    self.write_fpr(rd, res, false);
+                }
+                funct10::FSGNJNS => {
+                    let res = (fprs1_val & !SIGN) | ((fprs2_val & SIGN) ^ SIGN);
+                    self.write_fpr(rd, res, false);
+                }
+                funct10::FSGNJXS => {
+                    let res = fprs1_val ^ (fprs2_val & SIGN);
+                    self.write_fpr(rd, res, false);
+                }
+
+                funct10::FEQS => {
+                    let res = if f1.eq(f2) { 1 } else { 0 };
+                    self.update_fflags(&mut fflags);
+                    self.write_gpr(rd, res);
+                }
+                funct10::FLTS => {
+                    let res = if f1.lt(f2) { 1 } else { 0 };
+                    self.update_fflags(&mut fflags);
+                    self.write_gpr(rd, res);
+                }
+                funct10::FLES => {
+                    let res = if f1.le(f2) { 1 } else { 0 };
+                    self.update_fflags(&mut fflags);
+                    self.write_gpr(rd, res);
+                }
+
+                funct10::FCLASSS => {
+                    // See Table 29 in unprivileged spec for reference
+                    let res = (f1.is_negative_infinity() as u16)
+                        | ((f1.is_negative_normal() as u16) << 1)
+                        | ((f1.is_negative_subnormal() as u16) << 2)
+                        | ((f1.is_negative_zero() as u16) << 3)
+                        | ((f1.is_positive_zero() as u16) << 4)
+                        | ((f1.is_positive_subnormal() as u16) << 5)
+                        | ((f1.is_positive_normal() as u16) << 6)
+                        | ((f1.is_positive_infinity() as u16) << 7)
+                        | ((f1.is_signaling_nan() as u16) << 8)
+                        | (((f1.is_nan() && !f1.is_signaling_nan()) as u16) << 9);
+                    self.write_gpr(rd, res as u64);
+                }
+
+                _ => self.trap(Trap::IllegalInstruction),
+            },
+        }
     }
 
     pub(crate) fn handle_op_v(&mut self, _instr: Instruction) {

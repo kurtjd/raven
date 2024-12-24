@@ -1,4 +1,5 @@
 use crate::cpu::*;
+use crate::instructions::Frm;
 use arbitrary_int::*;
 use bitbybit::{bitenum, bitfield};
 
@@ -72,6 +73,11 @@ mod csr_addr {
     pub(super) const INSTRET: u16 = 0xC02;
     pub(super) const CYCLEH: u16 = 0xC80;
     pub(super) const INSTRETH: u16 = 0xC82;
+
+    // Floating-point
+    pub(super) const FFLAGS: u16 = 0x001;
+    pub(super) const FRM: u16 = 0x002;
+    pub(super) const FCSR: u16 = 0x003;
 }
 
 #[derive(PartialEq, PartialOrd)]
@@ -513,6 +519,33 @@ pub(crate) struct Mcause {
     mcause64: Mcause64,
 }
 
+#[bitfield(u32, default = 0)]
+pub(crate) struct Fcsr {
+    #[bit(0, rw)]
+    nx: bool,
+
+    #[bit(1, rw)]
+    uf: bool,
+
+    #[bit(2, rw)]
+    of: bool,
+
+    #[bit(3, rw)]
+    dz: bool,
+
+    #[bit(4, rw)]
+    nv: bool,
+
+    #[bits(0..=4, rw)]
+    fflags: u5,
+
+    #[bits(5..=7, rw)]
+    frm: Frm,
+
+    #[bits(8..=31, rw)]
+    res: u24,
+}
+
 #[derive(Default)]
 pub(crate) struct Csr {
     pub(crate) misa: Misa,
@@ -534,6 +567,7 @@ pub(crate) struct Csr {
     pub(crate) mepc: u64,
     pub(crate) mcause: Mcause,
     pub(crate) mtval: u64,
+    pub(crate) fcsr: Fcsr,
 }
 
 impl Cpu {
@@ -845,6 +879,23 @@ impl Cpu {
         self.reg.csr.mtval = val;
     }
 
+    fn fcsr_write_raw(&mut self, val: u32) {
+        let fcsr = Fcsr::new_with_raw_value(val);
+        self.reg.csr.fcsr = Fcsr::default()
+            .with_fflags(fcsr.fflags())
+            .with_frm(fcsr.frm());
+    }
+
+    fn fflags_write_raw(&mut self, val: u8) {
+        let fflags = u5::new(val);
+        self.reg.csr.fcsr = self.reg.csr.fcsr.with_fflags(fflags);
+    }
+
+    fn frm_write_raw(&mut self, val: u8) {
+        let frm = u3::new(val);
+        self.reg.csr.fcsr = self.reg.csr.fcsr.with_frm(Frm::new_with_raw_value(frm));
+    }
+
     fn csr_has_priv(&self, addr: CsrAddr) -> bool {
         if let Ok(mode) = PrivMode::try_from(addr.priv_lvl()) {
             mode <= self.priv_mode
@@ -951,6 +1002,16 @@ impl Cpu {
                 0
             }
 
+            csr_addr::FCSR if self.ext_supported(Extension::F) => {
+                self.reg.csr.fcsr.raw_value() as u64
+            }
+            csr_addr::FRM if self.ext_supported(Extension::F) => {
+                u64::from(self.reg.csr.fcsr.frm().raw_value())
+            }
+            csr_addr::FFLAGS if self.ext_supported(Extension::F) => {
+                self.reg.csr.fcsr.fflags().value() as u64
+            }
+
             _ => return Err(CsrError::NotSupported),
         };
 
@@ -994,6 +1055,13 @@ impl Cpu {
             csr_addr::MEPC => self.mepc_write_raw(val),
             csr_addr::MCAUSE => self.mcause_write_raw(val),
             csr_addr::MTVAL => self.mtval_write_raw(val),
+
+            // Floating-point
+            csr_addr::FCSR if self.ext_supported(Extension::F) => self.fcsr_write_raw(val as u32),
+            csr_addr::FRM if self.ext_supported(Extension::F) => self.frm_write_raw(val as u8),
+            csr_addr::FFLAGS if self.ext_supported(Extension::F) => {
+                self.fflags_write_raw(val as u8)
+            }
 
             /* Not implemented by raven, but software should still be able to write
              * without raising an exception so just discard the write.

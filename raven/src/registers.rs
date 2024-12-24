@@ -6,7 +6,7 @@ pub(crate) struct Registers {
     pub(crate) pc: u64,
     pub(crate) pc_next: u64,
     pub(crate) gpr: [u64; 32],
-    pub(crate) _fpr: [u64; 32],
+    pub(crate) fpr: [u64; 32],
     pub(crate) csr: Csr,
 }
 
@@ -58,6 +58,20 @@ impl Cpu {
                 BaseIsa::RV32I => self.reg.gpr[rd as usize] = sign_ext_w!(val as u32),
                 BaseIsa::RV64I => self.reg.gpr[rd as usize] = val,
             }
+        }
+    }
+
+    pub(crate) fn read_fpr(&self, rs: u8, double: bool) -> u64 {
+        match double {
+            true => self.reg.fpr[rs as usize],
+            false => self.reg.fpr[rs as usize] & 0xFFFF_FFFF,
+        }
+    }
+
+    pub(crate) fn write_fpr(&mut self, rd: u8, val: u64, double: bool) {
+        match double {
+            true => self.reg.fpr[rd as usize] = val,
+            false => self.reg.fpr[rd as usize] = sign_ext_w!(val as u32),
         }
     }
 }

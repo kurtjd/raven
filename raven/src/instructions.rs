@@ -1,6 +1,7 @@
 use crate::cpu::{BaseIsa, Cpu};
 use arbitrary_int::{u10, u12, u20, u3, u5, u6, u7};
 use bitbybit::{bitenum, bitfield};
+use softfloat_wrapper::RoundingMode;
 
 pub(crate) mod funct3 {
     // RV32
@@ -40,11 +41,28 @@ pub(crate) mod funct3 {
     pub(crate) const CSRRSI: u8 = 0b110;
     pub(crate) const CSRRCI: u8 = 0b111;
 
+    // F Extension
+    // RV32
+    pub(crate) const FLW: u8 = 0b010;
+    pub(crate) const FSW: u8 = 0b010;
+
     // Custom
     /* Halts the CPU.
      * Full instruction: 0x0000_000B
      */
     pub(crate) const HALT: u8 = 0b000;
+}
+
+pub(crate) mod funct7 {
+    // Floating-point
+    pub(crate) const FADDS: u8 = 0b0000000;
+    pub(crate) const FSUBS: u8 = 0b0000100;
+    pub(crate) const FMULS: u8 = 0b0001000;
+    pub(crate) const FDIVS: u8 = 0b0001100;
+    pub(crate) const FSQRTS: u8 = 0b0101100;
+    pub(crate) const FMINMAXS: u8 = 0b0010100;
+    pub(crate) const FCVTIS: u8 = 0b1100000;
+    pub(crate) const FCVTSI: u8 = 0b1101000;
 }
 
 #[allow(clippy::unusual_byte_groupings)]
@@ -85,6 +103,17 @@ pub(crate) mod funct10 {
     pub(crate) const DIVUW: u16 = 0b0000001_101;
     pub(crate) const REMW: u16 = 0b0000001_110;
     pub(crate) const REMUW: u16 = 0b0000001_111;
+
+    // Floating-point
+    pub(crate) const FMVXW: u16 = 0b1110000_000;
+    pub(crate) const FMVWX: u16 = 0b1111000_000;
+    pub(crate) const FSGNJS: u16 = 0b0010000_000;
+    pub(crate) const FSGNJNS: u16 = 0b0010000_001;
+    pub(crate) const FSGNJXS: u16 = 0b0010000_010;
+    pub(crate) const FEQS: u16 = 0b1010000_010;
+    pub(crate) const FLTS: u16 = 0b1010000_001;
+    pub(crate) const FLES: u16 = 0b1010000_000;
+    pub(crate) const FCLASSS: u16 = 0b1110000_001;
 }
 
 #[allow(clippy::unusual_byte_groupings)]
@@ -204,6 +233,30 @@ pub(crate) struct Instruction {
     half: u16,
 }
 
+#[bitenum(u3, exhaustive = true)]
+pub(crate) enum Frm {
+    Rne = 0b000,
+    Rtz = 0b001,
+    Rdn = 0b010,
+    Rup = 0b011,
+    Rmm = 0b100,
+    Res1 = 0b101,
+    Res2 = 0b110,
+    Dyn = 0b111,
+}
+
+impl From<Frm> for RoundingMode {
+    fn from(frm: Frm) -> Self {
+        match frm {
+            Frm::Rtz => Self::TowardZero,
+            Frm::Rdn => Self::TowardNegative,
+            Frm::Rup => Self::TowardPositive,
+            Frm::Rmm => Self::TiesToAway,
+            _ => Self::TiesToEven,
+        }
+    }
+}
+
 #[bitfield(u32)]
 pub(crate) struct InstrFormatR {
     #[bits(0..=6, r)]
@@ -214,6 +267,9 @@ pub(crate) struct InstrFormatR {
 
     #[bits(12..=14, r)]
     funct3: u3,
+
+    #[bits(12..=14, r)]
+    frm: Frm,
 
     #[bits(15..=19, r)]
     rs1: u5,
@@ -323,6 +379,38 @@ pub(crate) struct InstrFormatJ {
 
     #[bits([21..=30, 20, 12..=19, 31], r)]
     imm: u20,
+}
+
+#[bitenum(u2, exhaustive = true)]
+pub(crate) enum FFmt {
+    Single = 0b00,
+    Double = 0b01,
+    Half = 0b10,
+    Quad = 0b11,
+}
+
+#[bitfield(u32)]
+pub(crate) struct InstrFormatR4 {
+    #[bits(0..=6, r)]
+    opcode: Opcode,
+
+    #[bits(7..=11, r)]
+    rd: u5,
+
+    #[bits(12..=14, r)]
+    frm: Frm,
+
+    #[bits(15..=19, r)]
+    rs1: u5,
+
+    #[bits(20..=24, r)]
+    rs2: u5,
+
+    #[bits(25..=26, r)]
+    fmt: FFmt,
+
+    #[bits(27..=31, r)]
+    rs3: u5,
 }
 
 impl Cpu {

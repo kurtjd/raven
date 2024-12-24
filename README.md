@@ -28,7 +28,7 @@ TBD
 - ~~Implement RV64I~~
 - ~~Implement "M" extension~~
 - ~~Implement "A" extension~~
-- Implement "F" extension
+- ~~Implement "F" extension~~
 - Implement "D" extension
 - ~~Implement "Zicsr" extension~~
 - ~~Implement "Zifencei" extension~~
