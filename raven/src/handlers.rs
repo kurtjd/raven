@@ -1002,7 +1002,7 @@ impl Cpu {
         };
 
         self.update_fflags(&mut fflags);
-        self.write_fpr(rd, res, false);
+        self.write_fpr(rd, res, self.ext_supported(Extension::D));
     }
 
     pub(crate) fn handle_op_fp(&mut self, instr: Instruction) {
