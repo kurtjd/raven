@@ -42,9 +42,10 @@ pub(crate) mod funct3 {
     pub(crate) const CSRRCI: u8 = 0b111;
 
     // F Extension
-    // RV32
     pub(crate) const FLW: u8 = 0b010;
     pub(crate) const FSW: u8 = 0b010;
+    pub(crate) const FLD: u8 = 0b011;
+    pub(crate) const FSD: u8 = 0b011;
 
     // Custom
     /* Halts the CPU.
@@ -63,6 +64,17 @@ pub(crate) mod funct7 {
     pub(crate) const FMINMAXS: u8 = 0b0010100;
     pub(crate) const FCVTIS: u8 = 0b1100000;
     pub(crate) const FCVTSI: u8 = 0b1101000;
+
+    pub(crate) const FADDD: u8 = 0b0000001;
+    pub(crate) const FSUBD: u8 = 0b0000101;
+    pub(crate) const FMULD: u8 = 0b0001001;
+    pub(crate) const FDIVD: u8 = 0b0001101;
+    pub(crate) const FSQRTD: u8 = 0b0101101;
+    pub(crate) const FMINMAXD: u8 = 0b0010101;
+    pub(crate) const FCVTID: u8 = 0b1100001;
+    pub(crate) const FCVTDI: u8 = 0b1101001;
+    pub(crate) const FCVTSD: u8 = 0b0100000;
+    pub(crate) const FCVTDS: u8 = 0b0100001;
 }
 
 #[allow(clippy::unusual_byte_groupings)]
@@ -114,6 +126,16 @@ pub(crate) mod funct10 {
     pub(crate) const FLTS: u16 = 0b1010000_001;
     pub(crate) const FLES: u16 = 0b1010000_000;
     pub(crate) const FCLASSS: u16 = 0b1110000_001;
+
+    pub(crate) const FMVXD: u16 = 0b1110001_000;
+    pub(crate) const FMVDX: u16 = 0b1111001_000;
+    pub(crate) const FSGNJD: u16 = 0b0010001_000;
+    pub(crate) const FSGNJND: u16 = 0b0010001_001;
+    pub(crate) const FSGNJXD: u16 = 0b0010001_010;
+    pub(crate) const FEQD: u16 = 0b1010001_010;
+    pub(crate) const FLTD: u16 = 0b1010001_001;
+    pub(crate) const FLED: u16 = 0b1010001_000;
+    pub(crate) const FCLASSD: u16 = 0b1110001_001;
 }
 
 #[allow(clippy::unusual_byte_groupings)]

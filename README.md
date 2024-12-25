@@ -29,7 +29,7 @@ TBD
 - ~~Implement "M" extension~~
 - ~~Implement "A" extension~~
 - ~~Implement "F" extension~~
-- Implement "D" extension
+- ~~Implement "D" extension~~
 - ~~Implement "Zicsr" extension~~
 - ~~Implement "Zifencei" extension~~
 - Implement "C" extension

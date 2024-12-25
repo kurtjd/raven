@@ -1,5 +1,5 @@
 use arbitrary_int::*;
-use softfloat_wrapper::{ExceptionFlags, Float, F32};
+use softfloat_wrapper::{ExceptionFlags, Float, F32, F64};
 
 use crate::cpu::*;
 use crate::exceptions::Trap;
@@ -242,6 +242,16 @@ impl Cpu {
                 };
                 self.write_fpr(rd, val, false);
             }
+            funct3::FLD if self.ext_supported(Extension::D) => {
+                let val = match self.loadd(memory, addr) {
+                    Ok(dw) => dw,
+                    Err(_) => {
+                        self.trap(Trap::LoadAccessFault);
+                        return;
+                    }
+                };
+                self.write_fpr(rd, val, true);
+            }
             _ => self.trap(Trap::IllegalInstruction),
         }
     }
@@ -454,7 +464,8 @@ impl Cpu {
         let funct3 = instr.funct3().value();
         let rs1 = instr.rs1().value();
         let rs2 = instr.rs2().value();
-        let rs2_val = self.read_fpr(rs2, false);
+        let fprs2_val = self.read_fpr(rs2, false);
+        let dprs2_val = self.read_fpr(rs2, true);
         let imm = self.expand_imm_s(instr.imm().value());
 
         // Need to account for the fact that RV32I is limited to 32-bit addr space
@@ -464,10 +475,16 @@ impl Cpu {
         }
 
         match funct3 {
-            funct3::FSW => match self.storew(memory, addr, rs2_val as u32) {
+            funct3::FSW => match self.storew(memory, addr, fprs2_val as u32) {
                 Ok(()) => (),
                 Err(_) => self.trap(Trap::StoreAccessFault),
             },
+            funct3::FSD if self.ext_supported(Extension::D) => {
+                match self.stored(memory, addr, dprs2_val) {
+                    Ok(()) => (),
+                    Err(_) => self.trap(Trap::StoreAccessFault),
+                }
+            }
 
             _ => self.trap(Trap::IllegalInstruction),
         }
@@ -939,23 +956,45 @@ impl Cpu {
         let f2 = F32::from_bits(fprs2_val as u32);
         let f3 = F32::from_bits(fprs3_val as u32);
 
+        // Double-precision specific
+        let dprs1_val = self.read_fpr(rs1, true);
+        let dprs2_val = self.read_fpr(rs2, true);
+        let dprs3_val = self.read_fpr(rs3, true);
+        let d1 = F64::from_bits(dprs1_val);
+        let d2 = F64::from_bits(dprs2_val);
+        let d3 = F64::from_bits(dprs3_val);
+
         // Updated by softfloat floating point operations
         let mut fflags = ExceptionFlags::default();
         fflags.set();
 
         let res = match (opcode, fmt) {
             (MajorGroup::MAdd, FFmt::Single) => {
-                f1.mul(f2, frm.into()).add(f3, frm.into()).to_bits()
+                f1.mul(f2, frm.into()).add(f3, frm.into()).to_bits() as u64
             }
             (MajorGroup::NMAdd, FFmt::Single) => {
-                f1.mul(f2, frm.into()).neg().sub(f3, frm.into()).to_bits()
+                f1.mul(f2, frm.into()).neg().sub(f3, frm.into()).to_bits() as u64
             }
             (MajorGroup::MSub, FFmt::Single) => {
-                f1.mul(f2, frm.into()).sub(f3, frm.into()).to_bits()
+                f1.mul(f2, frm.into()).sub(f3, frm.into()).to_bits() as u64
             }
             (MajorGroup::NMSub, FFmt::Single) => {
-                f1.mul(f2, frm.into()).neg().add(f3, frm.into()).to_bits()
+                f1.mul(f2, frm.into()).neg().add(f3, frm.into()).to_bits() as u64
             }
+
+            (MajorGroup::MAdd, FFmt::Double) if self.ext_supported(Extension::D) => {
+                d1.mul(d2, frm.into()).add(d3, frm.into()).to_bits()
+            }
+            (MajorGroup::NMAdd, FFmt::Double) if self.ext_supported(Extension::D) => {
+                d1.mul(d2, frm.into()).neg().sub(d3, frm.into()).to_bits()
+            }
+            (MajorGroup::MSub, FFmt::Double) if self.ext_supported(Extension::D) => {
+                d1.mul(d2, frm.into()).sub(d3, frm.into()).to_bits()
+            }
+            (MajorGroup::NMSub, FFmt::Double) if self.ext_supported(Extension::D) => {
+                d1.mul(d2, frm.into()).neg().add(d3, frm.into()).to_bits()
+            }
+
             _ => {
                 self.trap(Trap::IllegalInstruction);
                 return;
@@ -963,7 +1002,7 @@ impl Cpu {
         };
 
         self.update_fflags(&mut fflags);
-        self.write_fpr(rd, res as u64, false);
+        self.write_fpr(rd, res, false);
     }
 
     pub(crate) fn handle_op_fp(&mut self, instr: Instruction) {
@@ -991,6 +1030,13 @@ impl Cpu {
         let fprs2_val = self.read_fpr(rs2, false);
         let f1 = F32::from_bits(fprs1_val as u32);
         let f2 = F32::from_bits(fprs2_val as u32);
+
+        // Double-precision specific
+        const SIGND: u64 = 1 << 63;
+        let dprs1_val = self.read_fpr(rs1, true);
+        let dprs2_val = self.read_fpr(rs2, true);
+        let d1 = F64::from_bits(dprs1_val);
+        let d2 = F64::from_bits(dprs2_val);
 
         // Updated by softfloat floating point operations
         let mut fflags = ExceptionFlags::default();
@@ -1122,6 +1168,143 @@ impl Cpu {
                 _ => self.trap(Trap::IllegalInstruction),
             },
 
+            funct7::FADDD if self.ext_supported(Extension::D) => {
+                let res = d1.add(d2, frm.into()).to_bits();
+                self.update_fflags(&mut fflags);
+                self.write_fpr(rd, res, true);
+            }
+
+            funct7::FSUBD if self.ext_supported(Extension::D) => {
+                let res = d1.sub(d2, frm.into()).to_bits();
+                self.update_fflags(&mut fflags);
+                self.write_fpr(rd, res, true);
+            }
+
+            funct7::FMULD if self.ext_supported(Extension::D) => {
+                let res = d1.mul(d2, frm.into()).to_bits();
+                self.update_fflags(&mut fflags);
+                self.write_fpr(rd, res, true);
+            }
+
+            funct7::FDIVD if self.ext_supported(Extension::D) => {
+                let res = d1.div(d2, frm.into()).to_bits();
+                self.update_fflags(&mut fflags);
+                self.write_fpr(rd, res, true);
+            }
+
+            funct7::FSQRTD if self.ext_supported(Extension::D) => {
+                let res = d1.sqrt(frm.into()).to_bits();
+                self.update_fflags(&mut fflags);
+                self.write_fpr(rd, res, true);
+            }
+
+            funct7::FMINMAXD if self.ext_supported(Extension::D) => {
+                /* RISCV considers -0.0 to be smaller than +0.0 for the purpose of this instruction,
+                 * however the IEEE spec considers them equal, so can't rely completely on
+                 * soft-float's lt compare method.
+                 */
+                let cond = match u8::from(frm.raw_value()) {
+                    // Min
+                    0b000 => (d1.is_negative_zero() && d2.is_positive_zero()) || d1.lt_quiet(d2),
+                    // Max
+                    0b001 => (d1.is_positive_zero() && d2.is_negative_zero()) || d2.lt_quiet(d1),
+                    _ => {
+                        self.trap(Trap::IllegalInstruction);
+                        return;
+                    }
+                };
+                self.update_fflags(&mut fflags);
+
+                // Should return canonical NaN if both args are NaN
+                let res = if d1.is_nan() && d2.is_nan() {
+                    F64::quiet_nan()
+                } else if cond {
+                    d1
+                } else {
+                    d2
+                }
+                .to_bits();
+
+                self.write_fpr(rd, res, true);
+            }
+
+            // Peculiar instruction that uses rs2 field to encode behavior
+            funct7::FCVTID if self.ext_supported(Extension::D) => match rs2 {
+                // FCVT.W.D
+                0b00000 => {
+                    let res = sign_ext_w!(d1.to_i32(frm.into(), true));
+                    self.update_fflags(&mut fflags);
+                    self.write_gpr(rd, res);
+                }
+
+                // FCVT.WU.D
+                0b00001 => {
+                    let res = sign_ext_w!(d1.to_u32(frm.into(), true));
+                    self.update_fflags(&mut fflags);
+                    self.write_gpr(rd, res);
+                }
+
+                // FCVT.L.D
+                0b00010 if self.xlen() == BaseIsa::RV64I => {
+                    let res = d1.to_i64(frm.into(), true) as u64;
+                    self.update_fflags(&mut fflags);
+                    self.write_gpr(rd, res);
+                }
+
+                // FCVT.LU.D
+                0b00011 if self.xlen() == BaseIsa::RV64I => {
+                    let res = d1.to_u64(frm.into(), true);
+                    self.update_fflags(&mut fflags);
+                    self.write_gpr(rd, res);
+                }
+
+                _ => self.trap(Trap::IllegalInstruction),
+            },
+
+            funct7::FCVTDI if self.ext_supported(Extension::D) => match rs2 {
+                // FCVT.D.W
+                0b00000 => {
+                    let res = F64::from_i32(gprs1_val as i32, frm.into()).to_bits();
+                    self.update_fflags(&mut fflags);
+                    self.write_fpr(rd, res, true);
+                }
+
+                // FCVT.D.WU
+                0b00001 => {
+                    let res = F64::from_u32(gprs1_val as u32, frm.into()).to_bits();
+                    self.update_fflags(&mut fflags);
+                    self.write_fpr(rd, res, true);
+                }
+
+                // FCVT.D.L
+                0b00010 if self.xlen() == BaseIsa::RV64I => {
+                    let res = F64::from_i64(gprs1_val as i64, frm.into()).to_bits();
+                    self.update_fflags(&mut fflags);
+                    self.write_fpr(rd, res, true);
+                }
+
+                // FCVT.D.LU
+                0b00011 if self.xlen() == BaseIsa::RV64I => {
+                    let res = F64::from_u64(gprs1_val, frm.into()).to_bits();
+                    self.update_fflags(&mut fflags);
+                    self.write_fpr(rd, res, true);
+                }
+
+                _ => self.trap(Trap::IllegalInstruction),
+            },
+
+            funct7::FCVTSD => {
+                let res = d1.to_f32(frm.into()).to_bits() as u64;
+                self.update_fflags(&mut fflags);
+                self.write_fpr(rd, res, true);
+            }
+
+            funct7::FCVTDS => {
+                let res = f1.to_f64(frm.into()).to_bits();
+                self.update_fflags(&mut fflags);
+                self.write_fpr(rd, res, true);
+            }
+
             _ => match funct10 {
                 funct10::FMVXW => self.write_gpr(rd, sign_ext_w!(fprs1_val as u32)),
                 funct10::FMVWX => self.write_fpr(rd, gprs1_val, false),
@@ -1167,6 +1350,55 @@ impl Cpu {
                         | ((f1.is_positive_infinity() as u16) << 7)
                         | ((f1.is_signaling_nan() as u16) << 8)
                         | (((f1.is_nan() && !f1.is_signaling_nan()) as u16) << 9);
+                    self.write_gpr(rd, res as u64);
+                }
+
+                funct10::FMVXD if self.ext_supported(Extension::D) => self.write_gpr(rd, dprs1_val),
+                funct10::FMVDX if self.ext_supported(Extension::D) => {
+                    self.write_fpr(rd, gprs1_val, true)
+                }
+
+                funct10::FSGNJD if self.ext_supported(Extension::D) => {
+                    let res = (dprs1_val & !SIGND) | (dprs2_val & SIGND);
+                    self.write_fpr(rd, res, true);
+                }
+                funct10::FSGNJND if self.ext_supported(Extension::D) => {
+                    let res = (dprs1_val & !SIGND) | ((dprs2_val & SIGND) ^ SIGND);
+                    self.write_fpr(rd, res, true);
+                }
+                funct10::FSGNJXD if self.ext_supported(Extension::D) => {
+                    let res = dprs1_val ^ (dprs2_val & SIGND);
+                    self.write_fpr(rd, res, true);
+                }
+
+                funct10::FEQD if self.ext_supported(Extension::D) => {
+                    let res = if d1.eq(d2) { 1 } else { 0 };
+                    self.update_fflags(&mut fflags);
+                    self.write_gpr(rd, res);
+                }
+                funct10::FLTD if self.ext_supported(Extension::D) => {
+                    let res = if d1.lt(d2) { 1 } else { 0 };
+                    self.update_fflags(&mut fflags);
+                    self.write_gpr(rd, res);
+                }
+                funct10::FLED if self.ext_supported(Extension::D) => {
+                    let res = if d1.le(d2) { 1 } else { 0 };
+                    self.update_fflags(&mut fflags);
+                    self.write_gpr(rd, res);
+                }
+
+                funct10::FCLASSD if self.ext_supported(Extension::D) => {
+                    // See Table 29 in unprivileged spec for reference
+                    let res = (d1.is_negative_infinity() as u16)
+                        | ((d1.is_negative_normal() as u16) << 1)
+                        | ((d1.is_negative_subnormal() as u16) << 2)
+                        | ((d1.is_negative_zero() as u16) << 3)
+                        | ((d1.is_positive_zero() as u16) << 4)
+                        | ((d1.is_positive_subnormal() as u16) << 5)
+                        | ((d1.is_positive_normal() as u16) << 6)
+                        | ((d1.is_positive_infinity() as u16) << 7)
+                        | ((d1.is_signaling_nan() as u16) << 8)
+                        | (((d1.is_nan() && !d1.is_signaling_nan()) as u16) << 9);
                     self.write_gpr(rd, res as u64);
                 }
 

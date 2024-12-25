@@ -71,7 +71,21 @@ impl Cpu {
     pub(crate) fn write_fpr(&mut self, rd: u8, val: u64, double: bool) {
         match double {
             true => self.reg.fpr[rd as usize] = val,
-            false => self.reg.fpr[rd as usize] = sign_ext_w!(val as u32),
+            false => {
+                if self.ext_supported(Extension::D) {
+                    /* If D extension is supported, need to create a "boxed NaN" by setting the
+                     * upper-32 bits high when writing a single-precision (32-bit) float.
+                     */
+                    let val = if val <= u32::MAX as u64 {
+                        val | (u32::MAX as u64) << 32
+                    } else {
+                        val
+                    };
+                    self.reg.fpr[rd as usize] = val;
+                } else {
+                    self.reg.fpr[rd as usize] = sign_ext_w!(val as u32);
+                }
+            }
         }
     }
 }
